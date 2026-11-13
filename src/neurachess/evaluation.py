@@ -11,6 +11,7 @@ PIECE_VALUES = {
 
 MATE_SCORE = 100_000
 
+
 def evaluate_material(board: chess.Board) -> int:
     score = 0
     for piece in board.piece_map().values():
@@ -18,6 +19,7 @@ def evaluate_material(board: chess.Board) -> int:
         score += value if piece.color == chess.WHITE else -value
 
     return score
+
 
 def evaluate(board: chess.Board) -> int:
     outcome = board.outcome()
