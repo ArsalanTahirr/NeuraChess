@@ -71,3 +71,67 @@ def find_best_move(board: chess.Board, depth: int) -> chess.Move | None:
             best_move = move
 
     return best_move
+
+
+def negamax_ab(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
+    if depth == 0 or board.is_game_over():
+        color = 1 if board.turn == chess.WHITE else -1
+        return color * evaluate(board)
+
+    best = float("-inf")
+    for move in order_moves(board):
+        board.push(move)
+        score = -negamax_ab(board, depth - 1, -beta, -alpha)
+        board.pop()
+
+        best = max(best, score)
+        alpha = max(alpha, score)
+        if alpha >= beta:
+            break
+
+    return best
+
+
+def negamax_best_move(board: chess.Board, depth: int) -> tuple[chess.Move | None, int]:
+    if depth < 1:
+        raise ValueError("depth must be at least 1")
+
+    color = 1 if board.turn == chess.WHITE else -1
+    if board.is_game_over():
+        return None, color * evaluate(board)
+
+    alpha = float("-inf")
+    beta = float("inf")
+
+    best_score = float("-inf")
+    best_move = None
+
+    for move in order_moves(board):
+        board.push(move)
+        score = -negamax_ab(board, depth - 1, -beta, -alpha)
+        board.pop()
+
+        if score > best_score:
+            best_score = score
+            best_move = move
+
+        alpha = max(alpha, best_score)
+        if alpha >= beta:
+            break
+
+    return best_move, best_score
+
+
+def iterative_deepening(
+    board: chess.Board, max_depth: int
+) -> tuple[chess.Move | None, int]:
+    if max_depth < 1:
+        raise ValueError("max_depth must be at least 1")
+
+    best_move = None
+    best_score = 0
+
+    for depth in range(1, max_depth + 1):
+        best_move, best_score = negamax_best_move(board, depth)
+
+    return best_move, best_score

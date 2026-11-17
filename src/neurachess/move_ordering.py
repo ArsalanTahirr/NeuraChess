@@ -14,7 +14,9 @@ def score_move(board: chess.Board, move: chess.Move) -> int:
         else:
             victim_type = board.piece_at(move.to_square).piece_type
 
-        score += 10 * PIECE_VALUES.get(victim_type, 0) - PIECE_VALUES.get(attacker.piece_type, 0)
+        score += 10 * PIECE_VALUES.get(victim_type, 0) - PIECE_VALUES.get(
+            attacker.piece_type, 0
+        )
 
     if move.promotion:
         score += PIECE_VALUES.get(move.promotion, 0)
