@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import chess
 
 from neurachess.evaluation import evaluate
+from neurachess.move_ordering import order_moves
 
 
 @dataclass
@@ -106,6 +107,58 @@ def alpha_beta(
     for move in board.legal_moves:
         board.push(move)
         score = alpha_beta(board, depth - 1, alpha, beta, stats)
+        board.pop()
+
+        best = min(best, score)
+        beta = min(beta, best)
+
+        if alpha >= beta:
+            if stats is not None:
+                stats.cutoffs += 1
+            break
+
+    return best
+
+
+def alpha_beta_ordered(
+    board: chess.Board,
+    depth: int,
+    alpha: float,
+    beta: float,
+    stats: SearchStats | None = None,
+) -> int:
+    """Alpha-beta with the engine's capture and promotion move ordering."""
+    if stats is not None:
+        stats.nodes += 1
+
+    if depth == 0 or board.is_game_over():
+        if stats is not None:
+            stats.evaluations += 1
+        return evaluate(board)
+
+    if board.turn == chess.WHITE:
+        best = float("-inf")
+
+        for move in order_moves(board):
+            board.push(move)
+            score = alpha_beta_ordered(board, depth - 1, alpha, beta, stats)
+            board.pop()
+
+            best = max(best, score)
+            alpha = max(alpha, best)
+
+            if alpha >= beta:
+                if stats is not None:
+                    stats.cutoffs += 1
+                break
+
+        return best
+
+    best = float("inf")
+
+    for move in order_moves(board):
+        board.push(move)
+        score = alpha_beta_ordered(board, depth - 1, alpha, beta, stats)
         board.pop()
 
         best = min(best, score)

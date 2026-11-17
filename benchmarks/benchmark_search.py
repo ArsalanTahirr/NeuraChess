@@ -2,20 +2,33 @@ import statistics
 import time
 
 import chess
-from search import SearchStats, alpha_beta, minimax
+
+if __package__:
+    from .search import SearchStats, alpha_beta, alpha_beta_ordered, minimax
+else:
+    from search import SearchStats, alpha_beta, alpha_beta_ordered, minimax
 
 POSITIONS = {
     "Starting Position": chess.STARTING_FEN,
     "White Winning": "4k3/8/8/8/8/8/8/3QK3 w - - 0 1",
     "Black Winning": "r3k3/8/8/8/8/8/8/4K3 b - - 0 1",
+    "Tactical Middlegame": (
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
+    ),
 }
 
 DEPTHS = [1, 2, 3]
 REPEATS = 3
 INF = float("inf")
+ALGORITHMS = {
+    "Minimax": minimax,
+    "Alpha-Beta": alpha_beta,
+    "Ordered Alpha-Beta": alpha_beta_ordered,
+}
 
 
 def benchmark(algorithm, board, depth):
+    search = ALGORITHMS[algorithm]
     times = []
     result = None
     stats = None
@@ -27,9 +40,9 @@ def benchmark(algorithm, board, depth):
         start = time.perf_counter()
 
         if algorithm == "Minimax":
-            score = minimax(current_board, depth, current_stats)
+            score = search(current_board, depth, current_stats)
         else:
-            score = alpha_beta(current_board, depth, -INF, INF, current_stats)
+            score = search(current_board, depth, -INF, INF, current_stats)
 
         elapsed = time.perf_counter() - start
 
@@ -49,34 +62,44 @@ def main():
         board = chess.Board(fen)
 
         for depth in DEPTHS:
-            minimax_score, mm_stats, mm_time = benchmark("Minimax", board, depth)
+            results = {name: benchmark(name, board, depth) for name in ALGORITHMS}
+            minimax_score, mm_stats, mm_time = results["Minimax"]
 
-            ab_score, ab_stats, ab_time = benchmark("Alpha-Beta", board, depth)
-
-            assert minimax_score == ab_score, f"Search mismatch at depth {depth}"
-
-            reduction = 100 * (1 - ab_stats.nodes / mm_stats.nodes)
-
-            speedup = mm_time / ab_time if ab_time > 0 else float("inf")
+            for name, (score, _, _) in results.items():
+                assert score == minimax_score, (
+                    f"{name} mismatch in {position_name} at depth {depth}: "
+                    f"{score} != {minimax_score}"
+                )
 
             print(f"\nDepth: {depth} plies")
             print(f"Evaluation: {minimax_score:+d}")
-            print(f"{'Metric':<22} {'Minimax':>14} {'Alpha-Beta':>14}")
-            print("-" * 52)
-            print(f"{'Nodes visited':<22}{mm_stats.nodes:>14,}{ab_stats.nodes:>14,}")
+            print(f"{'Metric':<24}" + "".join(f"{name:>20}" for name in results))
+            print("-" * 84)
+            for label, attribute in [
+                ("Nodes visited", "nodes"),
+                ("Leaf evaluations", "evaluations"),
+                ("Cutoffs", "cutoffs"),
+            ]:
+                print(
+                    f"{label:<24}"
+                    + "".join(
+                        f"{getattr(stats, attribute):>20,}"
+                        for _, stats, _ in results.values()
+                    )
+                )
             print(
-                f"{'Leaf evaluations':<22}"
-                f"{mm_stats.evaluations:>14,}"
-                f"{ab_stats.evaluations:>14,}"
+                f"{'Median time (ms)':<24}"
+                + "".join(
+                    f"{elapsed * 1000:>20.2f}" for _, _, elapsed in results.values()
+                )
             )
-            print(f"{'Cutoffs':<22}{mm_stats.cutoffs:>14,}{ab_stats.cutoffs:>14,}")
-            print(
-                f"{'Median time (ms)':<22}"
-                f"{mm_time * 1000:>14.2f}"
-                f"{ab_time * 1000:>14.2f}"
-            )
-            print(f"Node reduction: {reduction:.2f}%")
-            print(f"Runtime speedup: {speedup:.2f}x")
+            print("Node reduction and runtime speedup relative to Minimax:")
+            for name, (_, stats, elapsed) in results.items():
+                if name == "Minimax":
+                    continue
+                reduction = 100 * (1 - stats.nodes / mm_stats.nodes)
+                speedup = mm_time / elapsed if elapsed > 0 else INF
+                print(f"  {name}: {reduction:.2f}% fewer nodes, {speedup:.2f}x speedup")
 
 
 if __name__ == "__main__":
