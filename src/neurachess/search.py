@@ -1,7 +1,11 @@
-import chess, time, math
+import math
+import time
+
+import chess
 
 from neurachess.evaluation import evaluate
 from neurachess.move_ordering import order_moves
+from neurachess.search_utils import SearchTimeout, check_timeout
 
 
 def minimax(board: chess.Board, depth: int) -> int:
@@ -137,16 +141,9 @@ def iterative_deepening(
     return best_move, best_score
 
 
-class SearchTimeout(Exception):
-    pass
-
-
-def check_timeout(deadline: float) -> None:
-    if time.perf_counter() >= deadline:
-        raise SearchTimeout
-
-
-def negamax_ab_timed(board: chess.Board, depth: int, alpha: float, beta: float, deadline:float) -> int:
+def negamax_ab_timed(
+    board: chess.Board, depth: int, alpha: float, beta: float, deadline: float
+) -> int:
     check_timeout(deadline)
     if depth == 0 or board.is_game_over():
         color = 1 if board.turn == chess.WHITE else -1
@@ -169,7 +166,9 @@ def negamax_ab_timed(board: chess.Board, depth: int, alpha: float, beta: float, 
     return best
 
 
-def negamax_best_move_timed(board: chess.Board, depth: int, deadline: float) -> tuple[chess.Move | None, int]:
+def negamax_best_move_timed(
+    board: chess.Board, depth: int, deadline: float
+) -> tuple[chess.Move | None, int]:
     if depth < 1:
         raise ValueError("depth must be at least 1")
     check_timeout(deadline)
@@ -208,7 +207,7 @@ def iterative_deepening_timed(
     max_depth: int,
     time_limit: float,
 ) -> tuple[chess.Move | None, int, int]:
-    
+
     if max_depth < 1:
         raise ValueError("max_depth must be at least 1")
 
@@ -228,9 +227,7 @@ def iterative_deepening_timed(
 
     for depth in range(1, max_depth + 1):
         try:
-            move, score = negamax_best_move_timed(
-                board, depth, deadline
-            )
+            move, score = negamax_best_move_timed(board, depth, deadline)
         except SearchTimeout:
             break
 
