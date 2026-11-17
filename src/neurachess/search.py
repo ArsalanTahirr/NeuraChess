@@ -1,4 +1,4 @@
-import chess
+import chess, time, math
 
 from neurachess.evaluation import evaluate
 from neurachess.move_ordering import order_moves
@@ -135,3 +135,107 @@ def iterative_deepening(
         best_move, best_score = negamax_best_move(board, depth)
 
     return best_move, best_score
+
+
+class SearchTimeout(Exception):
+    pass
+
+
+def check_timeout(deadline: float) -> None:
+    if time.perf_counter() >= deadline:
+        raise SearchTimeout
+
+
+def negamax_ab_timed(board: chess.Board, depth: int, alpha: float, beta: float, deadline:float) -> int:
+    check_timeout(deadline)
+    if depth == 0 or board.is_game_over():
+        color = 1 if board.turn == chess.WHITE else -1
+        return color * evaluate(board)
+
+    best = float("-inf")
+    for move in order_moves(board):
+        check_timeout(deadline)
+        board.push(move)
+        try:
+            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline)
+        finally:
+            board.pop()
+
+        best = max(best, score)
+        alpha = max(alpha, score)
+        if alpha >= beta:
+            break
+
+    return best
+
+
+def negamax_best_move_timed(board: chess.Board, depth: int, deadline: float) -> tuple[chess.Move | None, int]:
+    if depth < 1:
+        raise ValueError("depth must be at least 1")
+    check_timeout(deadline)
+
+    color = 1 if board.turn == chess.WHITE else -1
+    if board.is_game_over():
+        return None, color * evaluate(board)
+
+    alpha = float("-inf")
+    beta = float("inf")
+
+    best_score = float("-inf")
+    best_move = None
+
+    for move in order_moves(board):
+        check_timeout(deadline)
+        board.push(move)
+        try:
+            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline)
+        finally:
+            board.pop()
+
+        if score > best_score:
+            best_score = score
+            best_move = move
+
+        alpha = max(alpha, best_score)
+        if alpha >= beta:
+            break
+
+    return best_move, best_score
+
+
+def iterative_deepening_timed(
+    board: chess.Board,
+    max_depth: int,
+    time_limit: float,
+) -> tuple[chess.Move | None, int, int]:
+    
+    if max_depth < 1:
+        raise ValueError("max_depth must be at least 1")
+
+    if not math.isfinite(time_limit) or time_limit <= 0:
+        raise ValueError("time_limit must be positive and finite")
+
+    color = 1 if board.turn == chess.WHITE else -1
+
+    if board.is_game_over():
+        return None, color * evaluate(board), 0
+
+    best_move = next(iter(board.legal_moves))
+    best_score = color * evaluate(board)
+    completed_depth = 0
+
+    deadline = time.perf_counter() + time_limit
+
+    for depth in range(1, max_depth + 1):
+        try:
+            move, score = negamax_best_move_timed(
+                board, depth, deadline
+            )
+        except SearchTimeout:
+            break
+
+        best_move = move
+        best_score = score
+        completed_depth = depth
+
+    return best_move, best_score, completed_depth
