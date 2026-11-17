@@ -4,10 +4,18 @@ import pytest
 from neurachess import search as search_module
 from neurachess.evaluation import MATE_SCORE, evaluate
 from neurachess.move_ordering import order_moves, score_move
-from neurachess.search import alpha_beta, find_best_move, minimax, negamax_ab
+from neurachess.search import (
+    alpha_beta,
+    find_best_move,
+    iterative_deepening,
+    minimax,
+    negamax_ab,
+    negamax_best_move,
+)
 
 INF = float("inf")
 SEARCHES = [minimax, alpha_beta, negamax_ab]
+MOVE_SEARCHES = [negamax_best_move, iterative_deepening]
 WHITE_WINNING = "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
 BLACK_WINNING = "r3k3/8/8/8/8/8/8/4K3 b - - 0 1"
 WHITE_IN_CHECK = "4k3/8/8/8/8/8/8/r3K3 w - - 0 1"
@@ -112,7 +120,7 @@ def test_terminal_positions(search, depth, mirrored, fen, white_score):
 
 
 @pytest.mark.parametrize(
-    "search", [*SEARCHES, find_best_move], ids=lambda f: f.__name__
+    "search", [*SEARCHES, find_best_move, *MOVE_SEARCHES], ids=lambda f: f.__name__
 )
 def test_search_preserves_board_and_existing_move_history(search):
     board = chess.Board()
@@ -120,7 +128,7 @@ def test_search_preserves_board_and_existing_move_history(search):
         board.push_uci(move)
     original = board.copy(stack=True)
 
-    if search is find_best_move:
+    if search is find_best_move or search in MOVE_SEARCHES:
         search(board, 2)
     else:
         run_search(search, board, 2)
@@ -250,3 +258,102 @@ def test_move_ordering_scores(fen, uci, expected):
 def test_move_ordering_prioritizes_capture_or_promotion(fen, uci):
     board = chess.Board(fen)
     assert order_moves(board)[0] == chess.Move.from_uci(uci)
+
+
+@pytest.mark.parametrize("search", MOVE_SEARCHES, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("depth", [-2, -1, 0])
+def test_negamax_move_search_rejects_nonpositive_depth(search, depth):
+    parameter = "max_depth" if search is iterative_deepening else "depth"
+    with pytest.raises(ValueError, match=f"^{parameter} must be at least 1$"):
+        search(chess.Board(), depth)
+
+
+@pytest.mark.parametrize("search", MOVE_SEARCHES, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("fen", ACTIVE_POSITIONS)
+@pytest.mark.parametrize("depth", [1, 2, 3])
+def test_negamax_move_search_returns_optimal_move_and_score(search, fen, depth):
+    board = chess.Board(fen)
+    color = 1 if board.turn == chess.WHITE else -1
+    expected = color * minimax(board, depth)
+
+    move, score = search(board, depth)
+
+    assert move is not None
+    assert move in board.legal_moves
+    assert isinstance(score, int)
+    assert score == expected
+    board.push(move)
+    assert color * minimax(board, depth - 1) == score
+
+
+@pytest.mark.parametrize("search", MOVE_SEARCHES, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("mirrored", [False, True], ids=["original", "color-swapped"])
+@pytest.mark.parametrize(
+    "fen,expected",
+    [
+        pytest.param(CHECKMATED, -MATE_SCORE, id="checkmate"),
+        pytest.param(STALEMATE, 0, id="stalemate"),
+        pytest.param("4k3/8/8/8/8/8/8/4K3 w - - 0 1", 0, id="insufficient-material"),
+    ],
+)
+def test_negamax_move_search_returns_no_move_and_terminal_score(
+    search, mirrored, fen, expected
+):
+    board = chess.Board(fen)
+    if mirrored:
+        board = board.mirror()
+    original = board.copy(stack=True)
+    assert board.is_game_over()
+
+    assert search(board, 3) == (None, expected)
+    assert board == original
+    assert board.move_stack == original.move_stack
+
+
+@pytest.mark.parametrize("search", MOVE_SEARCHES, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("fen", [WHITE_MATE_IN_ONE, BLACK_MATE_IN_ONE])
+def test_negamax_move_search_delivers_mate_with_positive_score(search, fen):
+    board = chess.Board(fen)
+    move, score = search(board, 1)
+
+    assert move is not None
+    assert move in board.legal_moves
+    assert score == MATE_SCORE
+    board.push(move)
+    assert board.is_checkmate()
+
+
+@pytest.mark.parametrize("search", MOVE_SEARCHES, ids=lambda f: f.__name__)
+@pytest.mark.parametrize("mirrored", [False, True], ids=["white", "black"])
+def test_negamax_move_search_respects_requested_depth(search, mirrored):
+    # Taking the queen wins material immediately, but the rook on a8 recaptures.
+    board = chess.Board("r3k3/8/8/8/8/8/q7/R3K3 w - - 0 1")
+    if mirrored:
+        board = board.mirror()
+    expected_move = chess.Move.from_uci("a8a7" if mirrored else "a1a2")
+
+    assert search(board, 1) == (expected_move, 0)
+    assert search(board, 2) == (expected_move, -500)
+
+
+@pytest.mark.parametrize("max_depth", [1, 3])
+def test_iterative_deepening_searches_all_depths_and_returns_final_result(
+    monkeypatch, max_depth
+):
+    board = chess.Board()
+    results = [
+        (chess.Move.from_uci("e2e4"), 100),
+        (chess.Move.from_uci("d2d4"), -50),
+        (chess.Move.from_uci("g1f3"), 25),
+    ]
+    calls = []
+
+    def fake_best_move(current_board, depth):
+        assert current_board is board
+        calls.append(depth)
+        return results[depth - 1]
+
+    monkeypatch.setattr(search_module, "negamax_best_move", fake_best_move)
+
+    assert iterative_deepening(board, max_depth) == results[max_depth - 1]
+    assert calls == list(range(1, max_depth + 1))
