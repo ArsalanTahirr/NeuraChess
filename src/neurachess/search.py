@@ -1,6 +1,7 @@
 import chess
 
 from neurachess.evaluation import evaluate
+from neurachess.move_ordering import order_moves
 
 
 def minimax(board: chess.Board, depth: int) -> int:
@@ -24,7 +25,7 @@ def alpha_beta(board: chess.Board, depth: int, alpha: float, beta: float) -> int
 
     if board.turn == chess.WHITE:
         best = float("-inf")
-        for move in board.legal_moves:
+        for move in order_moves(board):
             board.push(move)
             score = alpha_beta(board, depth - 1, alpha, beta)
             board.pop()
@@ -35,7 +36,7 @@ def alpha_beta(board: chess.Board, depth: int, alpha: float, beta: float) -> int
         return best
 
     best = float("inf")
-    for move in board.legal_moves:
+    for move in order_moves(board):
         board.push(move)
         score = alpha_beta(board, depth - 1, alpha, beta)
         board.pop()
