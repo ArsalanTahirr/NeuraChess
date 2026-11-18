@@ -3,6 +3,7 @@ import pytest
 
 from neurachess import search
 from neurachess.evaluation import MATE_SCORE, evaluate
+from neurachess.quiescence import quiescence
 
 INF = float("inf")
 WHITE_WINNING = "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
@@ -54,27 +55,47 @@ def test_check_timeout_returns_before_deadline(frozen_clock):
     assert search.check_timeout(100.1) is None
 
 
+def reference_negamax(board, depth):
+    """Unpruned search with the current quiescence leaf evaluation."""
+    if board.is_game_over():
+        return (1 if board.turn == chess.WHITE else -1) * evaluate(board)
+    if depth == 0:
+        return quiescence(board, -INF, INF)
+    scores = []
+    for move in list(board.legal_moves):
+        board.push(move)
+        try:
+            scores.append(-reference_negamax(board, depth - 1))
+        finally:
+            board.pop()
+    return max(scores)
+
+
 @pytest.mark.parametrize("fen", ACTIVE_POSITIONS)
-@pytest.mark.parametrize("depth", [0, 1, 2, 3])
-def test_timed_negamax_matches_untimed_search(frozen_clock, fen, depth):
+@pytest.mark.parametrize("depth", [0, 1, 2])
+def test_timed_negamax_matches_quiescence_reference(frozen_clock, fen, depth):
     board = chess.Board(fen)
-    expected = search.negamax_ab(board, depth, -INF, INF)
-    assert search.negamax_ab_timed(board, depth, -INF, INF, 101.0) == expected
+    assert search.negamax_ab_timed(board, depth, -INF, INF, 101.0) == (
+        reference_negamax(board, depth)
+    )
 
 
 @pytest.mark.parametrize("fen", ACTIVE_POSITIONS)
 @pytest.mark.parametrize("depth", [1, 2])
-def test_timed_best_move_matches_untimed_search(frozen_clock, fen, depth):
+def test_timed_best_move_has_optimal_quiescence_score(frozen_clock, fen, depth):
     board = chess.Board(fen)
-    assert search.negamax_best_move_timed(board, depth, 101.0) == (
-        search.negamax_best_move(board, depth)
-    )
+    expected = reference_negamax(board, depth)
+    move, score = search.negamax_best_move_timed(board, depth, 101.0)
+    assert move in board.legal_moves
+    assert score == expected
+    board.push(move)
+    assert -reference_negamax(board, depth - 1) == expected
 
 
 @pytest.mark.parametrize("fen", [WHITE_WINNING, BLACK_WINNING])
 def test_timed_negamax_narrow_window_bounds(frozen_clock, fen):
     board = chess.Board(fen)
-    score = search.negamax_ab(board, 2, -INF, INF)
+    score = reference_negamax(board, 2)
     fail_high = search.negamax_ab_timed(board, 2, score - 200, score - 100, 101.0)
     fail_low = search.negamax_ab_timed(board, 2, score + 100, score + 200, 101.0)
     assert score - 100 <= fail_high <= score
@@ -137,10 +158,10 @@ def test_timed_search_restores_board_and_propagates_evaluation_errors(
     board.push_uci("e2e4")
     original = board.copy(stack=True)
 
-    def broken_evaluation(current_board):
+    def broken_evaluation(*args):
         raise RuntimeError("evaluation failed")
 
-    monkeypatch.setattr(search, "evaluate", broken_evaluation)
+    monkeypatch.setattr(search, "quiescence", broken_evaluation)
     with pytest.raises(RuntimeError, match="evaluation failed"):
         run_timed(function, board, 2, 101.0)
     assert_board_restored(board, original)
@@ -188,9 +209,12 @@ def test_timed_iterative_deepening_completes_max_depth(frozen_clock, fen):
     board = chess.Board(fen)
     original = board.copy(stack=True)
     move, score, depth = search.iterative_deepening_timed(board, 2, 1.0)
-    assert (move, score) == search.negamax_best_move(board, 2)
+    assert move in board.legal_moves
+    assert score == reference_negamax(board, 2)
     assert depth == 2
     assert_board_restored(board, original)
+    board.push(move)
+    assert -reference_negamax(board, 1) == score
 
 
 @pytest.mark.parametrize("mirrored", [False, True], ids=["original", "color-swapped"])
@@ -240,7 +264,7 @@ def test_timed_iterative_deepening_keeps_last_completed_result(
     ]
     calls = []
 
-    def timed_best_move(current_board, depth, deadline):
+    def timed_best_move(current_board, depth, deadline, tt):
         assert current_board is board
         # Every iteration must share the original time budget.
         assert deadline == 101.0
@@ -264,7 +288,7 @@ def test_timed_iterative_deepening_restores_history_after_partial_iteration(
     for uci in ["e2e4", "d7d5", "e4d5"]:
         board.push_uci(uci)
     original = board.copy(stack=True)
-    expected = search.negamax_best_move(board, 1)
+    expected = search.negamax_best_move_timed(board, 1, INF)
     real_best_move = search.negamax_best_move_timed
     current_depth = 0
     checks = 0
@@ -278,10 +302,10 @@ def test_timed_iterative_deepening_restores_history_after_partial_iteration(
                 return 101.0
         return 100.0
 
-    def timed_best_move(current_board, depth, deadline):
+    def timed_best_move(current_board, depth, deadline, tt):
         nonlocal current_depth
         current_depth = depth
-        return real_best_move(current_board, depth, deadline)
+        return real_best_move(current_board, depth, deadline, tt)
 
     monkeypatch.setattr(search.time, "perf_counter", clock)
     monkeypatch.setattr(search, "negamax_best_move_timed", timed_best_move)

@@ -5,8 +5,9 @@ import chess
 
 from neurachess.evaluation import evaluate
 from neurachess.move_ordering import order_moves
-from neurachess.search_utils import SearchTimeout, check_timeout
 from neurachess.quiescence import quiescence
+from neurachess.search_utils import SearchTimeout, check_timeout
+from neurachess.transposition import TranspositionTable, TTEntry, TTFlag, position_key
 
 
 def minimax(board: chess.Board, depth: int) -> int:
@@ -143,10 +144,15 @@ def iterative_deepening(
 
 
 def negamax_ab_timed(
-    board: chess.Board, depth: int, alpha: float, beta: float, deadline: float
+    board: chess.Board,
+    depth: int,
+    alpha: float,
+    beta: float,
+    deadline: float,
+    tt: TranspositionTable | None = None,
 ) -> int:
     check_timeout(deadline)
-    
+
     if board.is_game_over():
         color = 1 if board.turn == chess.WHITE else -1
         return color * evaluate(board)
@@ -154,25 +160,78 @@ def negamax_ab_timed(
     if depth == 0:
         return quiescence(board, alpha, beta, deadline)
 
+    entry, key = None, None
+    if tt is not None:
+        key = position_key(board)
+        entry = tt.get(key)
+
+        if entry is not None and entry.depth >= depth:
+            if entry.flag == TTFlag.EXACT:
+                return entry.score
+
+            if entry.flag == TTFlag.LOWERBOUND:
+                alpha = max(alpha, entry.score)
+
+            elif entry.flag == TTFlag.UPPERBOUND:
+                beta = min(beta, entry.score)
+
+            if alpha >= beta:
+                return entry.score
+
+    alpha_start = alpha
+    beta_start = beta
+
     best = float("-inf")
-    for move in order_moves(board):
+    best_move = None
+
+    moves = order_moves(board)
+
+    if entry is not None and entry.best_move in moves:
+        moves.remove(entry.best_move)
+        moves.insert(0, entry.best_move)
+
+    for move in moves:
         check_timeout(deadline)
         board.push(move)
         try:
-            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline)
+            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline, tt)
         finally:
             board.pop()
 
-        best = max(best, score)
+        if score > best:
+            best = score
+            best_move = move
+
         alpha = max(alpha, score)
         if alpha >= beta:
             break
+
+    if tt is not None and key is not None:
+        if best <= alpha_start:
+            flag = TTFlag.UPPERBOUND
+        elif best >= beta_start:
+            flag = TTFlag.LOWERBOUND
+        else:
+            flag = TTFlag.EXACT
+
+        existing = tt.get(key)
+
+        if existing is None or depth >= existing.depth:
+            tt[key] = TTEntry(
+                depth=depth,
+                score=best,
+                flag=flag,
+                best_move=best_move,
+            )
 
     return best
 
 
 def negamax_best_move_timed(
-    board: chess.Board, depth: int, deadline: float
+    board: chess.Board,
+    depth: int,
+    deadline: float,
+    tt: TranspositionTable | None = None,
 ) -> tuple[chess.Move | None, int]:
     if depth < 1:
         raise ValueError("depth must be at least 1")
@@ -192,7 +251,7 @@ def negamax_best_move_timed(
         check_timeout(deadline)
         board.push(move)
         try:
-            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline)
+            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline, tt)
         finally:
             board.pop()
 
@@ -230,9 +289,11 @@ def iterative_deepening_timed(
 
     deadline = time.perf_counter() + time_limit
 
+    tt: TranspositionTable = {}
+
     for depth in range(1, max_depth + 1):
         try:
-            move, score = negamax_best_move_timed(board, depth, deadline)
+            move, score = negamax_best_move_timed(board, depth, deadline, tt)
         except SearchTimeout:
             break
 
