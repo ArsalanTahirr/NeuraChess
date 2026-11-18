@@ -6,6 +6,7 @@ import chess
 from neurachess.evaluation import evaluate
 from neurachess.move_ordering import order_moves
 from neurachess.search_utils import SearchTimeout, check_timeout
+from neurachess.quiescence import quiescence
 
 
 def minimax(board: chess.Board, depth: int) -> int:
@@ -145,9 +146,13 @@ def negamax_ab_timed(
     board: chess.Board, depth: int, alpha: float, beta: float, deadline: float
 ) -> int:
     check_timeout(deadline)
-    if depth == 0 or board.is_game_over():
+    
+    if board.is_game_over():
         color = 1 if board.turn == chess.WHITE else -1
         return color * evaluate(board)
+
+    if depth == 0:
+        return quiescence(board, alpha, beta, deadline)
 
     best = float("-inf")
     for move in order_moves(board):
