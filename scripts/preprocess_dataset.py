@@ -32,9 +32,7 @@ def main():
         shape=(n, 1),
     )
 
-    for i, (fen, cp) in enumerate(
-        zip(df["fen"], df["cp"])
-    ):
+    for i, (fen, cp) in enumerate(zip(df["fen"], df["cp"])):
         board = chess.Board(fen)
 
         X[i] = encode_board(board).numpy().astype(np.uint8)
