@@ -11,6 +11,5 @@ wheels/
 main.py
 
 # Generated evaluation dataset
-/data/chess_positions.parquet
-/data/dataset_report.json
-/data/.dataset-build-*/
+/data/*
+/notebooks/.ipynb_checkpoints/
