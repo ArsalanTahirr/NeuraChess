@@ -1,6 +1,8 @@
+from collections.abc import Callable
+
 import chess
 
-from neurachess.evaluation import evaluate
+from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.move_ordering import score_move
 from neurachess.search_utils import check_timeout
 
@@ -10,17 +12,21 @@ def quiescence(
     alpha: float,
     beta: float,
     deadline: float | None = None,
+    evaluator: Callable = classical_evaluate,
+    ply: int = 0,
 ) -> int:
     if deadline is not None:
         check_timeout(deadline)
 
     color = 1 if board.turn == chess.WHITE else -1
 
+    if board.is_checkmate():
+        return -MATE_SCORE + ply
     if board.is_game_over():
-        return color * evaluate(board)
+        return 0
 
     if not board.is_check():
-        stand_pat = color * evaluate(board)
+        stand_pat = color * evaluator(board)
 
         if stand_pat >= beta:
             return stand_pat
@@ -46,7 +52,7 @@ def quiescence(
         board.push(move)
 
         try:
-            score = -quiescence(board, -beta, -alpha, deadline)
+            score = -quiescence(board, -beta, -alpha, deadline, evaluator, ply + 1)
         finally:
             board.pop()
 

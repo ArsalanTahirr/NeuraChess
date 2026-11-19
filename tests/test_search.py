@@ -2,7 +2,7 @@ import chess
 import pytest
 
 from neurachess import search as search_module
-from neurachess.evaluation import MATE_SCORE, evaluate
+from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.move_ordering import order_moves, score_move
 from neurachess.search import (
     alpha_beta,
@@ -58,7 +58,7 @@ def expected_score(search, board, white_score):
 def test_depth_zero_returns_static_evaluation(search, fen):
     board = chess.Board(fen)
     assert run_search(search, board, 0) == expected_score(
-        search, board, evaluate(board)
+        search, board, classical_evaluate(board)
     )
 
 

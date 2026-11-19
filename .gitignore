@@ -6,6 +6,13 @@ dist/
 wheels/
 *.egg-info
 
+# Frontend dependencies, TypeScript cache, and local Vite settings
+/frontend/node_modules/
+/frontend/**/*.tsbuildinfo
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.*.local
+
 # Virtual environments
 .venv
 main.py

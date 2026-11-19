@@ -45,19 +45,19 @@ def train_one_epoch(
         loss.backward()
 
         if track_gradients and (step + 1) % log_every == 0:
-            gradient_history.append({
-                "step": step + 1,
-                "layers": get_gradient_stats(model),
-            })
+            gradient_history.append(
+                {
+                    "step": step + 1,
+                    "layers": get_gradient_stats(model),
+                }
+            )
 
         optimizer.step()
 
         batch_size = X.size(0)
 
         total_loss += loss.item() * batch_size
-        total_absolute_error += (
-            (predictions.detach() - y).abs().sum().item()
-        )
+        total_absolute_error += (predictions.detach() - y).abs().sum().item()
         total_samples += batch_size
 
     result = {
@@ -86,9 +86,7 @@ def validate(model, loader, loss_fn):
         batch_size = X.size(0)
 
         total_loss += loss.item() * batch_size
-        total_absolute_error += (
-            (predictions - y).abs().sum().item()
-        )
+        total_absolute_error += (predictions - y).abs().sum().item()
         total_samples += batch_size
 
     return {

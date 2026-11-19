@@ -122,7 +122,7 @@ def test_cached_bound_tightens_window_when_search_continues(
     tt = {position_key(board): TTEntry(1, score, flag, None)}
     windows = []
 
-    def leaf(current_board, alpha, beta, deadline):
+    def leaf(current_board, alpha, beta, deadline, *, evaluator, ply):
         windows.append((alpha, beta))
         return 0
 
@@ -162,7 +162,7 @@ def test_shallow_entry_only_orders_legal_best_move_and_is_replaced(
     visited = []
     expected_first = move if move in board.legal_moves else search.order_moves(board)[0]
 
-    def leaf(current_board, alpha, beta, deadline):
+    def leaf(current_board, alpha, beta, deadline, *, evaluator, ply):
         visited.append(current_board.peek())
         return 0
 
@@ -268,7 +268,7 @@ def test_iterative_deepening_reuses_one_table_per_search(monkeypatch):
     key = position_key(board)
     entry = TTEntry(1, 0, TTFlag.EXACT, None)
 
-    def best_move(current_board, depth, deadline, tt):
+    def best_move(current_board, depth, deadline, tt, evaluator):
         assert current_board is board
         assert deadline == 101.0
         if depth == 1:

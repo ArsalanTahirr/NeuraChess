@@ -3,7 +3,7 @@ import pytest
 
 from neurachess import quiescence as quiescence_module
 from neurachess import search_utils
-from neurachess.evaluation import MATE_SCORE, evaluate
+from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.quiescence import quiescence
 from neurachess.search_utils import SearchTimeout
 
@@ -23,7 +23,7 @@ TACTICAL_POSITIONS = [
     pytest.param(EN_PASSANT, 100, id="en-passant"),
     pytest.param(PROMOTION, 900, id="quiet-promotion"),
     pytest.param(CAPTURE_PROMOTION, 900, id="capture-promotion"),
-    pytest.param(CAPTURE_MATE, MATE_SCORE, id="capture-delivers-mate"),
+    pytest.param(CAPTURE_MATE, MATE_SCORE - 1, id="capture-delivers-mate"),
 ]
 
 
@@ -62,18 +62,15 @@ def test_tactical_sequences_return_side_to_move_score(fen, expected, mirrored):
         ),
     ],
 )
-def test_quiet_position_returns_stand_pat_without_searching_moves(
-    monkeypatch, fen, expected
-):
+def test_quiet_position_returns_stand_pat_without_searching_moves(fen, expected):
     board = chess.Board(fen)
     evaluations = []
 
     def tracked_evaluate(current_board):
         evaluations.append(current_board.fen())
-        return evaluate(current_board)
+        return classical_evaluate(current_board)
 
-    monkeypatch.setattr(quiescence_module, "evaluate", tracked_evaluate)
-    assert quiescence(board, -INF, INF) == expected
+    assert quiescence(board, -INF, INF, evaluator=tracked_evaluate) == expected
     assert evaluations == [board.fen()]
 
 
@@ -103,7 +100,7 @@ def test_narrow_window_results_bound_full_window_score(fen, score):
 
 
 @pytest.mark.parametrize("beta", [INF, -600])
-def test_in_check_searches_quiet_evasions_instead_of_standing_pat(monkeypatch, beta):
+def test_in_check_searches_quiet_evasions_instead_of_standing_pat(beta):
     board = chess.Board(IN_CHECK)
     assert board.is_check()
     legal_moves = set(board.legal_moves)
@@ -115,10 +112,9 @@ def test_in_check_searches_quiet_evasions_instead_of_standing_pat(monkeypatch, b
         assert not current_board.is_check()
         assert current_board.move_stack
         evaluated_evasions.append(current_board.move_stack[0])
-        return evaluate(current_board)
+        return classical_evaluate(current_board)
 
-    monkeypatch.setattr(quiescence_module, "evaluate", tracked_evaluate)
-    assert quiescence(board, -INF, beta) == -500
+    assert quiescence(board, -INF, beta, evaluator=tracked_evaluate) == -500
     assert evaluated_evasions
     if beta == INF:
         assert set(evaluated_evasions) == legal_moves
@@ -207,16 +203,15 @@ def test_search_preserves_existing_move_history(monkeypatch, interrupted):
     assert_board_restored(board, original)
 
 
-def test_evaluation_error_in_child_restores_board_and_propagates(monkeypatch):
+def test_evaluation_error_in_child_restores_board_and_propagates():
     board = chess.Board(CAPTURE)
     original = board.copy(stack=True)
 
     def broken_child_evaluation(current_board):
         if current_board.move_stack:
             raise RuntimeError("evaluation failed")
-        return evaluate(current_board)
+        return classical_evaluate(current_board)
 
-    monkeypatch.setattr(quiescence_module, "evaluate", broken_child_evaluation)
     with pytest.raises(RuntimeError, match="evaluation failed"):
-        quiescence(board, -INF, INF)
+        quiescence(board, -INF, INF, evaluator=broken_child_evaluation)
     assert_board_restored(board, original)

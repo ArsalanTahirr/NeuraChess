@@ -1,9 +1,10 @@
 import math
 import time
+from collections.abc import Callable
 
 import chess
 
-from neurachess.evaluation import evaluate
+from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.move_ordering import order_moves
 from neurachess.quiescence import quiescence
 from neurachess.search_utils import SearchTimeout, check_timeout
@@ -12,7 +13,7 @@ from neurachess.transposition import TranspositionTable, TTEntry, TTFlag, positi
 
 def minimax(board: chess.Board, depth: int) -> int:
     if depth == 0 or board.is_game_over():
-        return evaluate(board)
+        return classical_evaluate(board)
 
     scores = []
     for move in board.legal_moves:
@@ -27,7 +28,7 @@ def minimax(board: chess.Board, depth: int) -> int:
 
 def alpha_beta(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
     if depth == 0 or board.is_game_over():
-        return evaluate(board)
+        return classical_evaluate(board)
 
     if board.turn == chess.WHITE:
         best = float("-inf")
@@ -82,7 +83,7 @@ def find_best_move(board: chess.Board, depth: int) -> chess.Move | None:
 def negamax_ab(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
     if depth == 0 or board.is_game_over():
         color = 1 if board.turn == chess.WHITE else -1
-        return color * evaluate(board)
+        return color * classical_evaluate(board)
 
     best = float("-inf")
     for move in order_moves(board):
@@ -104,7 +105,7 @@ def negamax_best_move(board: chess.Board, depth: int) -> tuple[chess.Move | None
 
     color = 1 if board.turn == chess.WHITE else -1
     if board.is_game_over():
-        return None, color * evaluate(board)
+        return None, color * classical_evaluate(board)
 
     alpha = float("-inf")
     beta = float("inf")
@@ -143,6 +144,14 @@ def iterative_deepening(
     return best_move, best_score
 
 
+def _shift_mate_score(score, plies):
+    # Reserve scores near MATE_SCORE for mates. Store them relative to the node
+    # so a transposition reached at a different root distance can reuse them.
+    if abs(score) >= MATE_SCORE - 1000:
+        return score + plies if score > 0 else score - plies
+    return score
+
+
 def negamax_ab_timed(
     board: chess.Board,
     depth: int,
@@ -150,15 +159,19 @@ def negamax_ab_timed(
     beta: float,
     deadline: float,
     tt: TranspositionTable | None = None,
+    evaluator: Callable = classical_evaluate,
+    ply: int = 0,
 ) -> int:
     check_timeout(deadline)
 
+    if board.is_checkmate():
+        return -MATE_SCORE + ply
+
     if board.is_game_over():
-        color = 1 if board.turn == chess.WHITE else -1
-        return color * evaluate(board)
+        return 0
 
     if depth == 0:
-        return quiescence(board, alpha, beta, deadline)
+        return quiescence(board, alpha, beta, deadline, evaluator=evaluator, ply=ply)
 
     entry, key = None, None
     if tt is not None:
@@ -166,17 +179,18 @@ def negamax_ab_timed(
         entry = tt.get(key)
 
         if entry is not None and entry.depth >= depth:
+            cached_score = _shift_mate_score(entry.score, -ply)
             if entry.flag == TTFlag.EXACT:
-                return entry.score
+                return cached_score
 
             if entry.flag == TTFlag.LOWERBOUND:
-                alpha = max(alpha, entry.score)
+                alpha = max(alpha, cached_score)
 
             elif entry.flag == TTFlag.UPPERBOUND:
-                beta = min(beta, entry.score)
+                beta = min(beta, cached_score)
 
             if alpha >= beta:
-                return entry.score
+                return cached_score
 
     alpha_start = alpha
     beta_start = beta
@@ -194,7 +208,9 @@ def negamax_ab_timed(
         check_timeout(deadline)
         board.push(move)
         try:
-            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline, tt)
+            score = -negamax_ab_timed(
+                board, depth - 1, -beta, -alpha, deadline, tt, evaluator, ply + 1
+            )
         finally:
             board.pop()
 
@@ -219,7 +235,7 @@ def negamax_ab_timed(
         if existing is None or depth >= existing.depth:
             tt[key] = TTEntry(
                 depth=depth,
-                score=best,
+                score=_shift_mate_score(best, ply),
                 flag=flag,
                 best_move=best_move,
             )
@@ -232,6 +248,7 @@ def negamax_best_move_timed(
     depth: int,
     deadline: float,
     tt: TranspositionTable | None = None,
+    evaluator: Callable = classical_evaluate,
 ) -> tuple[chess.Move | None, int]:
     if depth < 1:
         raise ValueError("depth must be at least 1")
@@ -239,7 +256,7 @@ def negamax_best_move_timed(
 
     color = 1 if board.turn == chess.WHITE else -1
     if board.is_game_over():
-        return None, color * evaluate(board)
+        return None, color * classical_evaluate(board)
 
     alpha = float("-inf")
     beta = float("inf")
@@ -251,7 +268,9 @@ def negamax_best_move_timed(
         check_timeout(deadline)
         board.push(move)
         try:
-            score = -negamax_ab_timed(board, depth - 1, -beta, -alpha, deadline, tt)
+            score = -negamax_ab_timed(
+                board, depth - 1, -beta, -alpha, deadline, tt, evaluator, ply=1
+            )
         finally:
             board.pop()
 
@@ -270,6 +289,7 @@ def iterative_deepening_timed(
     board: chess.Board,
     max_depth: int,
     time_limit: float,
+    evaluator: Callable = classical_evaluate,
 ) -> tuple[chess.Move | None, int, int]:
 
     if max_depth < 1:
@@ -281,19 +301,19 @@ def iterative_deepening_timed(
     color = 1 if board.turn == chess.WHITE else -1
 
     if board.is_game_over():
-        return None, color * evaluate(board), 0
-
-    best_move = next(iter(board.legal_moves))
-    best_score = color * evaluate(board)
-    completed_depth = 0
+        return None, color * classical_evaluate(board), 0
 
     deadline = time.perf_counter() + time_limit
+    best_move = next(iter(board.legal_moves))
+    best_score = color * evaluator(board)
+    completed_depth = 0
 
     tt: TranspositionTable = {}
 
     for depth in range(1, max_depth + 1):
         try:
-            move, score = negamax_best_move_timed(board, depth, deadline, tt)
+            move, score = negamax_best_move_timed(board, depth, deadline, tt, evaluator)
+            check_timeout(deadline)
         except SearchTimeout:
             break
 

@@ -21,7 +21,7 @@ def evaluate_material(board: chess.Board) -> int:
     return score
 
 
-def evaluate(board: chess.Board) -> int:
+def classical_evaluate(board: chess.Board) -> int:
     outcome = board.outcome()
     if outcome is not None:
         if outcome.winner is None:
