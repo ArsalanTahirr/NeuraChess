@@ -16,6 +16,7 @@ PIECE_TO_PLANE = {
     (chess.BLACK, chess.KING): 11,
 }
 
+
 def encode_board(board: chess.Board) -> torch.Tensor:
     planes = torch.zeros((12, 8, 8), dtype=torch.float32)
 
