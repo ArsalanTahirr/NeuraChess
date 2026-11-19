@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 main.py
+
+# Generated evaluation dataset
+/data/chess_positions.parquet
+/data/dataset_report.json
+/data/.dataset-build-*/
