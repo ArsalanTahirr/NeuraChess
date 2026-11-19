@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+main.py
+
+# Generated evaluation dataset
+/data/*
+/notebooks/.ipynb_checkpoints/
+/checkpoints/
