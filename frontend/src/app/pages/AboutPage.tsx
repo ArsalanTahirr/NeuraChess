@@ -14,7 +14,7 @@ export function AboutPage() {
           The Engineering of NeuraChess
         </h1>
         <p className="text-base sm:text-lg text-[var(--color-text-secondary)] max-w-2xl font-light leading-relaxed">
-          How classical alpha-beta tree search collaborates with a custom 773-input PyTorch neural network to evaluate chess positions with strategic depth.
+          How NeuraChess searches possible moves and scores the resulting positions.
         </p>
       </div>
 
@@ -46,7 +46,7 @@ export function AboutPage() {
             <div className="p-4 bg-[var(--color-surface-panel)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] flex flex-col gap-1.5">
               <span className="font-mono text-xs text-[var(--color-accent-bright)] uppercase">Layer III</span>
               <strong className="text-[var(--color-text-primary)] text-sm">Neural Evaluator</strong>
-              <span className="text-xs text-[var(--color-text-tertiary)]">773-dimensional board vector mapped through trained PyTorch MLPs to centipawn score.</span>
+              <span className="text-xs text-[var(--color-text-tertiary)]">The configured neural checkpoint scores positions in centipawns.</span>
             </div>
           </div>
         </div>
@@ -132,20 +132,25 @@ export function AboutPage() {
         <div className="flex items-baseline gap-3 mb-4">
           <span className="font-mono text-sm text-[var(--color-accent)] font-semibold">03</span>
           <h2 className="text-2xl font-semibold text-[var(--color-text-primary)] tracking-tight">
-            PyTorch Neural Evaluation Model
+            Neural Evaluation Models
           </h2>
         </div>
         <div className="space-y-4 text-[var(--color-text-secondary)] leading-relaxed text-sm sm:text-base">
           <p>
-            The <code className="text-xs font-mono text-[var(--color-accent-bright)]">ChessEvaluator</code> learns to predict a position’s evaluation from its board encoding. NeuraChess loads the architecture from the selected checkpoint and runs inference on the CPU.
+            NeuraChess reads the architecture from the selected checkpoint. Both models train on Stockfish position scores and run on the CPU.
           </p>
 
           <div className="p-4 bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] font-mono text-xs space-y-2">
-            <div className="text-[var(--color-accent-bright)]">Default checkpoint (model_v001.pt)</div>
+            <div className="text-[var(--color-accent-bright)]">Original MLP (model_v001.pt)</div>
             <div><strong className="text-[var(--color-text-primary)]">773 input features</strong> (12 piece planes, side to move, and four castling rights)</div>
             <div><strong className="text-[var(--color-text-primary)]">512 → 256 → 128 hidden units</strong> with LayerNorm and GELU, trained with 0.1 dropout</div>
             <div><strong className="text-[var(--color-text-primary)]">One linear output</strong> scaled to White-relative centipawns</div>
             <div><strong className="text-[var(--color-text-primary)]">Huber loss</strong> for training</div>
+          </div>
+          <div className="p-4 bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] font-mono text-xs space-y-2">
+            <div className="text-[var(--color-accent-bright)]">NNUE (nnue_v001.pt)</div>
+            <div>Each king’s position selects a set of piece-square weights. The search updates those sums as pieces move.</div>
+            <div>Two 256-value perspectives feed a 32-unit layer that predicts a correction to the material score.</div>
           </div>
         </div>
       </section>

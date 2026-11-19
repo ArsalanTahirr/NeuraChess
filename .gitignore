@@ -20,4 +20,5 @@ main.py
 # Generated evaluation dataset
 /data/*
 /notebooks/.ipynb_checkpoints/
-/checkpoints/
+/checkpoints/*
+!/checkpoints/nnue_v001.pt

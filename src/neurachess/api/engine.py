@@ -4,6 +4,7 @@ from collections.abc import Callable
 from pathlib import Path
 from threading import BoundedSemaphore, Lock
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 import chess
 
@@ -15,21 +16,24 @@ from neurachess.search import iterative_deepening_timed
 
 logger = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from neurachess.neural.evaluator import NeuralEvaluator
+
 
 class Engine:
     def __init__(self, checkpoint: Path):
         self.checkpoint = checkpoint
-        self._neural_evaluate: Callable[[chess.Board], float] | None = None
+        self._neural_evaluator: NeuralEvaluator | None = None
         self._model_lock = Lock()
         self._search_slots = BoundedSemaphore(2)
 
     def _get_neural_evaluator(self) -> Callable[[chess.Board], float]:
         with self._model_lock:
-            if self._neural_evaluate is None:
+            if self._neural_evaluator is None:
                 try:
                     from neurachess.neural.evaluator import NeuralEvaluator
 
-                    evaluator = NeuralEvaluator(
+                    self._neural_evaluator = NeuralEvaluator(
                         self.checkpoint, require_architecture=True
                     )
                 except Exception as exc:
@@ -42,9 +46,7 @@ class Engine:
                         "The neural checkpoint could not be loaded. Check the server "
                         "checkpoint configuration or select Material evaluation.",
                     ) from exc
-                self._neural_evaluate = evaluator.evaluate
-
-            return self._neural_evaluate
+            return self._neural_evaluator.for_search()
 
     def search(self, board: chess.Board, options: SearchOptions) -> SearchResult:
         if not self._search_slots.acquire(blocking=False):

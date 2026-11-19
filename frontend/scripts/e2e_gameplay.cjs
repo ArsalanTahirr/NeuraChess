@@ -356,11 +356,84 @@ async function verifyGameplay({ send, requests, exceptions }) {
   await click('Play');
   await waitForText('1 ply');
 
+  async function checkPromotionDialog() {
+    await waitFor('the promotion chooser', () => evaluate(() =>
+      Boolean(document.querySelector('dialog:modal'))));
+    const options = await evaluate(() => [...document.querySelectorAll('dialog:modal button')]
+      .filter((button) => button.textContent.trim() !== 'Cancel')
+      .map((button) => {
+        const { left, right, top, bottom, width, height } = button.getBoundingClientRect();
+        return {
+          name: button.querySelector('span:last-child').textContent,
+          reachable: left >= 0 && right <= innerWidth && top >= 0 && bottom <= innerHeight &&
+            width >= 44 && height >= 44 &&
+            button.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2)),
+        };
+      }));
+    assert.deepEqual(options, ['Queen', 'Rook', 'Bishop', 'Knight']
+      .map((name) => ({ name, reachable: true })));
+  }
+
+  await click('Import position from FEN');
+  assert.ok(await select('input[placeholder^="rnbqkbnr"]', '4k3/p7/8/8/8/8/7p/4K3 b - - 0 1'));
+  const beforeImport = snapshot();
+  await click('Load Board');
+  await gameRequest('reset', beforeImport);
+  await waitFor('the pawn on h2 to be draggable', () => evaluate(() => {
+    const pawn = document.querySelector('[data-square="h2"] [data-piece="bP"][draggable="true"]');
+    if (!pawn) return false;
+    const { x, y, width, height } = pawn.getBoundingClientRect();
+    return pawn.contains(document.elementFromPoint(x + width / 2, y + height / 2));
+  }));
+  const beforePromotion = snapshot();
+  await evaluate(() => {
+    const pawn = document.querySelector('[data-square="h2"] [data-piece="bP"]');
+    const target = document.querySelector('[data-square="h1"]');
+    const dataTransfer = new DataTransfer();
+    const dispatch = (element, type) => {
+      const { x, y, width, height } = element.getBoundingClientRect();
+      element.dispatchEvent(new DragEvent(type, {
+        bubbles: true, cancelable: true, dataTransfer,
+        clientX: x + width / 2, clientY: y + height / 2,
+      }));
+    };
+    dispatch(pawn, 'dragstart');
+    for (const type of ['dragenter', 'dragover', 'drop']) dispatch(target, type);
+    dispatch(pawn, 'dragend');
+  });
+  await checkPromotionDialog();
+  await screenshot('promotion-desktop');
+  await clickWithMouse('Knight');
+  const promoted = await gameRequest('moves', beforePromotion);
+  assert.equal(promoted.moveHistory[0].uci, 'h2h1n');
 
   await send('Emulation.setDeviceMetricsOverride', {
     width: 390, height: 844, deviceScaleFactor: 1, mobile: true,
   });
   await screenshot('play-mobile');
+  await click('Analysis');
+  const promotionFen = '4k3/7P/8/8/8/8/P7/4K3 w - - 0 1';
+  await waitFor('the Analysis FEN input', () => select('#fen-input', promotionFen));
+  await click('Load');
+  await waitFor('the pawn on h7', () => evaluate(() =>
+    Boolean(document.querySelector('[data-square="h7"] [data-piece="wP"]'))));
+  await square('h7');
+  await square('g8');
+  assert.ok(await evaluate(() => !document.querySelector('dialog:modal')));
+  await square('h7');
+  await square('h8');
+  await checkPromotionDialog();
+  await screenshot('promotion-mobile');
+  await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await waitFor('promotion cancellation', () => evaluate(() => !document.querySelector('dialog:modal')));
+  assert.equal(await evaluate(() => document.querySelector('#fen-input').value), promotionFen);
+  await square('h7');
+  await square('h8');
+  await checkPromotionDialog();
+  await clickWithMouse('Rook');
+  await waitFor('the promoted rook', () => evaluate(() =>
+    Boolean(document.querySelector('[data-square="h8"] [data-piece="wR"]'))));
   assert.deepEqual(exceptions, []);
 }
 
@@ -401,7 +474,7 @@ async function main() {
       console.warn(`Chrome left temporary files in ${profile}.`);
     }
   }
-  console.log('Browser checks passed for Material as White, Neural as Black, analysis, history review, undo, reset, and invalid FEN.');
+  console.log('Browser checks passed for Material as White, Neural as Black, analysis, history review, undo, reset, invalid FEN, and desktop and mobile promotion.');
 }
 
 main().catch((error) => {

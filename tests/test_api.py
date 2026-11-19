@@ -20,8 +20,13 @@ BLACK_MATE_IN_ONE = chess.Board(MATE_IN_ONE).mirror().fen()
 
 
 @pytest.fixture
-def client():
-    with TestClient(create_app(CHECKPOINT)) as client:
+def checkpoint():
+    return CHECKPOINT
+
+
+@pytest.fixture
+def client(checkpoint):
+    with TestClient(create_app(checkpoint)) as client:
         yield client
 
 
@@ -279,10 +284,13 @@ def test_mate_distance_and_terminal_winner_have_distinct_fields(client, fen, win
     assert terminal.mate.model_dump() == {"winner": winner, "plies": 0}
 
 
-def test_real_neural_checkpoint_search_reuse_and_mode_switch(client, monkeypatch):
-    if not CHECKPOINT.is_file():
-        pytest.skip(f"Real trained checkpoint required at {CHECKPOINT}")
-    actual_evaluator = neural.NeuralEvaluator(CHECKPOINT, require_architecture=True)
+@pytest.mark.parametrize("checkpoint", [CHECKPOINT, Path("checkpoints/nnue_v001.pt")])
+def test_real_neural_checkpoint_search_reuse_and_mode_switch(
+    client, monkeypatch, checkpoint
+):
+    if not checkpoint.is_file():
+        pytest.skip(f"Real trained checkpoint required at {checkpoint}")
+    actual_evaluator = neural.NeuralEvaluator(checkpoint, require_architecture=True)
     load_calls = []
 
     def load_checkpoint(path, **kwargs):
@@ -326,7 +334,7 @@ def test_real_neural_checkpoint_search_reuse_and_mode_switch(client, monkeypatch
     )
     assert analysis.score_cp == pytest.approx(-black_root_score)
     assert analysis.depth == expected_depth == 1
-    assert load_calls == [CHECKPOINT]
+    assert load_calls == [checkpoint]
     assert GameState.model_validate(client.get(f"/games/{game.id}").json()) == opening
 
     move = next(iter(board.legal_moves)).uci()
@@ -334,7 +342,7 @@ def test_real_neural_checkpoint_search_reuse_and_mode_switch(client, monkeypatch
     reply = update(client, played, "engine-move")
     assert reply.last_search.evaluation_mode == "neural"
     assert_history(reply)
-    assert load_calls == [CHECKPOINT]
+    assert load_calls == [checkpoint]
 
 
 @pytest.mark.parametrize("corrupt", [False, True])

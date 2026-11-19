@@ -48,6 +48,8 @@ def create_app(checkpoint_path: Path | None = None) -> FastAPI:
     )
 
     default_checkpoint = Path("checkpoints/model_v001.pt")
+    if not default_checkpoint.is_file():
+        default_checkpoint = Path("checkpoints/nnue_v001.pt")
     engine = Engine(
         checkpoint_path
         or Path(os.environ.get("NEURACHESS_CHECKPOINT", default_checkpoint))
