@@ -1,0 +1,192 @@
+{
+  "checkpoint": {
+    "path": "checkpoints/model_v001.pt",
+    "sha256": "6ccf072262592c78f933d734045e64b9d544a2f9daa91317987edd642b56b2f8",
+    "architecture_source": "checkpoint",
+    "configuration": {
+      "activation": "GELU",
+      "dropout": 0.1,
+      "epoch": 25,
+      "hidden_sizes": [
+        512,
+        256,
+        128
+      ],
+      "input_size": 773,
+      "use_layer_norm": true,
+      "val_loss": 1.4827397078704834,
+      "val_mae_cp": 188.00396020507813
+    }
+  },
+  "dataset": {
+    "path": "data/chess_positions.parquet",
+    "sha256": "b9c719cf5de639a99353d81f78a73a556c57089a8dfabd477e233ef7e6141a17",
+    "rows": 1000000,
+    "split": "validation",
+    "split_seed": 42,
+    "split_fractions": [
+      0.8,
+      0.1,
+      0.1
+    ],
+    "validation_rows": 100000,
+    "target": "White-relative Stockfish cp column, as stored",
+    "terminal_policy": "Skip boards where is_game_over(claim_draw=True) from FEN",
+    "terminal_positions_skipped": 0
+  },
+  "samples": 5000,
+  "sample_seed": 42,
+  "environment": {
+    "device": "cpu",
+    "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.43",
+    "processor": "x86_64",
+    "python": "3.12.13",
+    "torch": "2.15.0+cu132",
+    "python_chess": "1.11.2",
+    "torch_threads": 1,
+    "torch_interop_threads": 1
+  },
+  "accuracy": {
+    "evaluators": {
+      "material": {
+        "mae_cp": 316.9678,
+        "rmse_cp": 458.48887685526245,
+        "bias_cp": -35.1778
+      },
+      "neural": {
+        "mae_cp": 186.1807650854051,
+        "rmse_cp": 316.3409123188052,
+        "bias_cp": 0.7301517498910427
+      }
+    },
+    "neural_better_pct": 69.89999999999999,
+    "buckets": [
+      {
+        "name": "Strong Black",
+        "interval_cp": "cp < -500",
+        "positions": 748,
+        "evaluators": {
+          "material": {
+            "mae_cp": 585.3917112299465,
+            "rmse_cp": 708.9865488643549,
+            "bias_cp": 563.0066844919786,
+            "bucket_accuracy_pct": 17.647058823529413
+          },
+          "neural": {
+            "mae_cp": 291.0062244341654,
+            "rmse_cp": 475.65821225652167,
+            "bias_cp": 242.91430466267514,
+            "bucket_accuracy_pct": 64.97326203208557
+          }
+        }
+      },
+      {
+        "name": "Moderate Black",
+        "interval_cp": "-500 <= cp < -150",
+        "positions": 845,
+        "evaluators": {
+          "material": {
+            "mae_cp": 244.77988165680475,
+            "rmse_cp": 296.2677922652542,
+            "bias_cp": 224.9147928994083,
+            "bucket_accuracy_pct": 27.337278106508876
+          },
+          "neural": {
+            "mae_cp": 166.8536285110832,
+            "rmse_cp": 242.60503685374113,
+            "bias_cp": 67.747863482124,
+            "bucket_accuracy_pct": 57.0414201183432
+          }
+        }
+      },
+      {
+        "name": "Equal",
+        "interval_cp": "-150 <= cp <= 150",
+        "positions": 1435,
+        "evaluators": {
+          "material": {
+            "mae_cp": 84.85365853658537,
+            "rmse_cp": 136.36639260227898,
+            "bias_cp": -11.150522648083623,
+            "bucket_accuracy_pct": 88.01393728222997
+          },
+          "neural": {
+            "mae_cp": 119.99438145330974,
+            "rmse_cp": 213.96767171787994,
+            "bias_cp": 9.70587990296427,
+            "bucket_accuracy_pct": 74.77351916376307
+          }
+        }
+      },
+      {
+        "name": "Moderate White",
+        "interval_cp": "150 < cp <= 500",
+        "positions": 994,
+        "evaluators": {
+          "material": {
+            "mae_cp": 247.93661971830986,
+            "rmse_cp": 296.7714622480217,
+            "bias_cp": -223.8963782696177,
+            "bucket_accuracy_pct": 26.961770623742453
+          },
+          "neural": {
+            "mae_cp": 160.71746915944624,
+            "rmse_cp": 247.25481695552634,
+            "bias_cp": -61.97368353923082,
+            "bucket_accuracy_pct": 60.46277665995976
+          }
+        }
+      },
+      {
+        "name": "Strong White",
+        "interval_cp": "500 < cp",
+        "positions": 978,
+        "evaluators": {
+          "material": {
+            "mae_cp": 584.778118609407,
+            "rmse_cp": 705.4199788960948,
+            "bias_cp": -560.8558282208589,
+            "bucket_accuracy_pct": 18.098159509202453
+          },
+          "neural": {
+            "mae_cp": 245.70015514152914,
+            "rmse_cp": 398.0042698959574,
+            "bias_cp": -191.84272188484547,
+            "bucket_accuracy_pct": 67.07566462167689
+          }
+        }
+      }
+    ]
+  },
+  "speed": {
+    "evaluators": {
+      "material": {
+        "repeat_seconds": [
+          0.06984619500144618,
+          0.07380032700166339,
+          0.07197923000057926,
+          0.07127641500119353,
+          0.07098773300094763
+        ],
+        "median_total_seconds": 0.07127641500119353,
+        "microseconds_per_position": 14.255283000238705,
+        "evaluations_per_second": 70149.43161656313
+      },
+      "neural": {
+        "repeat_seconds": [
+          3.2933986260031816,
+          4.402240601004451,
+          3.5917946549961925,
+          3.288808583994978,
+          3.214610614995763
+        ],
+        "median_total_seconds": 3.2933986260031816,
+        "microseconds_per_position": 658.6797252006363,
+        "evaluations_per_second": 1518.1885243171805
+      }
+    },
+    "repeats": 5,
+    "warmup_positions_per_evaluator": 100,
+    "neural_slowdown": 46.206008340178634
+  }
+}

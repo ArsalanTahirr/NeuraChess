@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import chess
 
-from neurachess.evaluation import evaluate
+from neurachess.evaluation import classical_evaluate
 from neurachess.move_ordering import order_moves
 
 
@@ -24,7 +24,7 @@ def minimax(
     if depth == 0 or board.is_game_over():
         if stats is not None:
             stats.evaluations += 1
-        return evaluate(board)
+        return classical_evaluate(board)
 
     scores = []
 
@@ -82,7 +82,7 @@ def alpha_beta(
     if depth == 0 or board.is_game_over():
         if stats is not None:
             stats.evaluations += 1
-        return evaluate(board)
+        return classical_evaluate(board)
 
     if board.turn == chess.WHITE:
         best = float("-inf")
@@ -134,7 +134,7 @@ def alpha_beta_ordered(
     if depth == 0 or board.is_game_over():
         if stats is not None:
             stats.evaluations += 1
-        return evaluate(board)
+        return classical_evaluate(board)
 
     if board.turn == chess.WHITE:
         best = float("-inf")
