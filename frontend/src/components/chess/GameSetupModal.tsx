@@ -1,37 +1,44 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import type { PlayerColor } from '@/types/chess';
+import type { EvaluationMode } from '@/types/engine';
+import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 
 interface GameSetupModalProps {
-  isOpen: boolean;
-  onStartGame: (color: PlayerColor, depth: number) => void;
+  onStartGame: (color: PlayerColor, depth: number, mode: EvaluationMode) => void;
   onClose?: () => void;
   initialColor?: PlayerColor;
   initialDepth?: number;
+  busy: boolean;
+  error: string | null;
 }
 
 export function GameSetupModal({
-  isOpen,
   onStartGame,
   onClose,
   initialColor = 'white',
   initialDepth = 4,
+  busy,
+  error,
 }: GameSetupModalProps) {
   const [selectedColor, setSelectedColor] = useState<PlayerColor>(initialColor);
   const [depth, setDepth] = useState<number>(initialDepth);
 
-  if (!isOpen) return null;
+  const [mode, setMode] = useState<EvaluationMode | ''>('');
 
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[rgba(14,13,11,0.85)] backdrop-blur-sm">
         <motion.div
+          role="dialog"
+          aria-label="New match setup"
+          aria-modal="true"
           initial={{ opacity: 0, scale: 0.94, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.94, y: 10 }}
           transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-          className="w-full max-w-md p-6 bg-[var(--color-surface-panel)] border border-[var(--color-border-emphasis)] rounded-[var(--radius-lg)] shadow-2xl relative flex flex-col items-center text-center"
+          className="w-full max-w-md max-h-full overflow-y-auto p-6 bg-[var(--color-surface-panel)] border border-[var(--color-border-emphasis)] rounded-[var(--radius-lg)] shadow-2xl relative flex flex-col items-center text-center"
         >
           {/* Header & Brand */}
           <div className="flex flex-col items-center gap-1.5 mb-5">
@@ -56,6 +63,8 @@ export function GameSetupModal({
               {/* White Card */}
               <button
                 type="button"
+                aria-label="Play as White"
+                aria-pressed={selectedColor === 'white'}
                 onClick={() => setSelectedColor('white')}
                 className={`flex flex-col items-center justify-center p-4 rounded-[var(--radius-md)] border cursor-pointer transition-all ${
                   selectedColor === 'white'
@@ -75,6 +84,8 @@ export function GameSetupModal({
               {/* Black Card */}
               <button
                 type="button"
+                aria-label="Play as Black"
+                aria-pressed={selectedColor === 'black'}
                 onClick={() => setSelectedColor('black')}
                 className={`flex flex-col items-center justify-center p-4 rounded-[var(--radius-md)] border cursor-pointer transition-all ${
                   selectedColor === 'black'
@@ -106,6 +117,7 @@ export function GameSetupModal({
 
             <input
               type="range"
+              aria-label="Calculation depth"
               min={1}
               max={6}
               value={depth}
@@ -117,17 +129,29 @@ export function GameSetupModal({
               <span>Standard (4)</span>
               <span>Deep (6)</span>
             </div>
+            <div className="mt-4">
+              <label htmlFor="game-evaluation" className="block text-xs text-[var(--color-text-secondary)] mb-1">
+                Evaluation
+              </label>
+              <Select id="game-evaluation" value={mode} onChange={(event) => setMode(event.target.value as EvaluationMode | '')}>
+                <option value="" disabled>Choose an evaluator</option>
+                <option value="material">Material</option>
+                <option value="neural">Neural</option>
+              </Select>
+            </div>
           </div>
 
           {/* Actions */}
           <div className="flex flex-col w-full gap-2">
+            {error && <p role="alert" className="text-xs text-[#f85149]">{error}</p>}
             <Button
               variant="primary"
               size="lg"
               className="w-full"
-              onClick={() => onStartGame(selectedColor, depth)}
+              disabled={busy || !mode}
+              onClick={() => mode && onStartGame(selectedColor, depth, mode)}
             >
-              Begin Match
+              {busy ? 'Starting…' : 'Begin Match'}
             </Button>
 
             {onClose && (

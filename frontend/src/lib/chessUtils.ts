@@ -1,5 +1,6 @@
 import { Chess, type Square, type PieceSymbol, type Color } from 'chess.js';
-import type { CapturedPieces, GameOutcome, MoveRecord } from '@/types/chess';
+import type { CapturedPieces, MoveRecord } from '@/types/chess';
+import type { MateScore } from '@/types/engine';
 
 export const PIECE_VALUES: Record<PieceSymbol, number> = {
   p: 1,
@@ -10,113 +11,22 @@ export const PIECE_VALUES: Record<PieceSymbol, number> = {
   k: 0,
 };
 
-export const INITIAL_PIECES = {
-  p: 8,
-  n: 2,
-  b: 2,
-  r: 2,
-  q: 1,
-};
-
-export function getCapturedPieces(chess: Chess): CapturedPieces {
-  const currentCounts = {
-    w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
-    b: { p: 0, n: 0, b: 0, r: 0, q: 0 },
-  };
-
-  const board = chess.board();
-  for (const row of board) {
-    for (const square of row) {
-      if (square && square.type !== 'k') {
-        currentCounts[square.color][square.type]++;
-      }
-    }
+export function getCapturedPieces(moves: MoveRecord[]): CapturedPieces {
+  const captured: CapturedPieces = { white: [], black: [] };
+  for (const move of moves) {
+    if (move.captured) captured[move.color === 'w' ? 'white' : 'black'].push(move.captured);
   }
-
-  const whiteCaptured: string[] = []; // pieces lost by black, taken by white
-  const blackCaptured: string[] = []; // pieces lost by white, taken by black
-
-  for (const [piece, initial] of Object.entries(INITIAL_PIECES)) {
-    const type = piece as keyof typeof INITIAL_PIECES;
-    const missingWhite = initial - currentCounts.w[type];
-    for (let i = 0; i < missingWhite; i++) {
-      blackCaptured.push(type.toUpperCase());
-    }
-
-    const missingBlack = initial - currentCounts.b[type];
-    for (let i = 0; i < missingBlack; i++) {
-      whiteCaptured.push(type.toLowerCase());
-    }
-  }
-
-  return {
-    white: whiteCaptured,
-    black: blackCaptured,
-  };
+  return captured;
 }
 
-export function calculateMaterialAdvantage(captured: CapturedPieces): {
-  white: number;
-  black: number;
-} {
-  let whiteScore = 0;
-  for (const piece of captured.white) {
-    whiteScore += PIECE_VALUES[piece.toLowerCase() as PieceSymbol] || 0;
+export function calculateMaterialAdvantage(chess: Chess): { white: number; black: number } {
+  let balance = 0;
+  for (const row of chess.board()) {
+    for (const piece of row) {
+      if (piece) balance += (piece.color === 'w' ? 1 : -1) * PIECE_VALUES[piece.type];
+    }
   }
-
-  let blackScore = 0;
-  for (const piece of captured.black) {
-    blackScore += PIECE_VALUES[piece.toLowerCase() as PieceSymbol] || 0;
-  }
-
-  return {
-    white: Math.max(0, whiteScore - blackScore),
-    black: Math.max(0, blackScore - whiteScore),
-  };
-}
-
-export function classifyGameOutcome(chess: Chess): GameOutcome | null {
-  if (!chess.isGameOver()) return null;
-
-  if (chess.isCheckmate()) {
-    const winner: 'white' | 'black' = chess.turn() === 'w' ? 'black' : 'white';
-    return {
-      result: winner,
-      reason: 'checkmate',
-      winner,
-    };
-  }
-
-  if (chess.isStalemate()) {
-    return {
-      result: 'draw',
-      reason: 'stalemate',
-      winner: null,
-    };
-  }
-
-  if (chess.isThreefoldRepetition()) {
-    return {
-      result: 'draw',
-      reason: 'threefold-repetition',
-      winner: null,
-    };
-  }
-
-  if (chess.isInsufficientMaterial()) {
-    return {
-      result: 'draw',
-      reason: 'insufficient-material',
-      winner: null,
-    };
-  }
-
-  // 50-move rule
-  return {
-    result: 'draw',
-    reason: 'fifty-move',
-    winner: null,
-  };
+  return { white: Math.max(0, balance), black: Math.max(0, -balance) };
 }
 
 export function findKingSquare(chess: Chess, color: Color): Square | null {
@@ -132,21 +42,15 @@ export function findKingSquare(chess: Chess, color: Color): Square | null {
   return null;
 }
 
-export function formatEvaluation(
-  score: number | null,
-  mateIn: number | null,
-  perspective: 'white' | 'black' = 'white'
-): string {
-  if (mateIn !== null) {
-    const adjustedMate = perspective === 'black' ? -mateIn : mateIn;
-    return `M${Math.abs(adjustedMate)}${adjustedMate > 0 ? ' (Win)' : ' (Loss)'}`;
+export function formatEvaluation(scoreCp: number | null, mate: MateScore | null): string {
+  if (mate) {
+    const winner = mate.winner === 'white' ? 'White' : 'Black';
+    if (mate.plies === 0) return `${winner} wins`;
+    return `${winner} mates in ${mate.plies} ${mate.plies === 1 ? 'ply' : 'plies'}`;
   }
-
-  if (score === null) return '—';
-
-  const adjustedScore = perspective === 'black' ? -score : score;
-  const inPawns = (adjustedScore / 100).toFixed(1);
-  return adjustedScore > 0 ? `+${inPawns}` : inPawns;
+  if (scoreCp === null) return '—';
+  const pawns = (scoreCp / 100).toFixed(1);
+  return scoreCp > 0 ? `+${pawns}` : pawns;
 }
 
 export function formatMoveTime(ms: number | null): string {

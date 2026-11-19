@@ -1,19 +1,18 @@
 import React from 'react';
-import type { MoveRecord, GameOutcome } from '@/types/chess';
-import type { EngineStatus as EngineStatusType } from '@/types/engine';
+import type { MoveRecord } from '@/types/chess';
+import type { ConnectionStatus, EvaluationMode, SearchResult } from '@/types/engine';
 import { EngineStatus } from './EngineStatus';
 import { MoveHistory } from './MoveHistory';
 import { GameControls } from './GameControls';
 
 interface GamePanelProps {
-  engineStatus: EngineStatusType;
-  lastResponse: {
-    time: number | null;
-    depth: number | null;
-    nodes: number | null;
-    score: number | null;
-    mateIn: number | null;
-  } | null;
+  connection: ConnectionStatus;
+  evaluationMode: EvaluationMode | null;
+  thinking: boolean;
+  busy: boolean;
+  error: string | null;
+  onRetry?: () => void;
+  lastResponse: SearchResult | null;
   moves: MoveRecord[];
   currentIndex: number;
   onNavigate: (index: number) => void;
@@ -21,18 +20,25 @@ interface GamePanelProps {
   onReturnToLive: () => void;
   onNewGame: () => void;
   onUndo: () => void;
-  onRedo: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
   onFlipBoard: () => void;
   onCopyFEN: () => Promise<boolean>;
-  onImportFEN: (fen: string) => boolean;
+  onImportFEN: (fen: string) => Promise<void>;
   onResign: () => void;
   canUndo: boolean;
-  canRedo: boolean;
+  canPrevious: boolean;
+  canNext: boolean;
   isGameOver: boolean;
 }
 
 export function GamePanel({
-  engineStatus,
+  connection,
+  evaluationMode,
+  thinking,
+  busy,
+  error,
+  onRetry,
   lastResponse,
   moves,
   currentIndex,
@@ -41,19 +47,28 @@ export function GamePanel({
   onReturnToLive,
   onNewGame,
   onUndo,
-  onRedo,
+  onPrevious,
+  onNext,
   onFlipBoard,
   onCopyFEN,
   onImportFEN,
   onResign,
   canUndo,
-  canRedo,
+  canPrevious,
+  canNext,
   isGameOver,
 }: GamePanelProps) {
   return (
     <div className="flex flex-col gap-3 w-full lg:w-[320px] shrink-0">
       {/* Engine Status / Thinking indicator */}
-      <EngineStatus status={engineStatus} lastResponse={lastResponse} />
+      <EngineStatus
+        connection={connection}
+        mode={evaluationMode}
+        thinking={thinking}
+        error={error}
+        onRetry={onRetry}
+        lastResponse={lastResponse}
+      />
 
       {/* Move ledger */}
       <MoveHistory
@@ -68,15 +83,17 @@ export function GamePanel({
       <GameControls
         onNewGame={onNewGame}
         onUndo={onUndo}
-        onRedo={onRedo}
+        onPrevious={onPrevious}
+        onNext={onNext}
         onFlipBoard={onFlipBoard}
         onCopyFEN={onCopyFEN}
         onImportFEN={onImportFEN}
         onResign={onResign}
         canUndo={canUndo}
-        canRedo={canRedo}
+        canPrevious={canPrevious}
+        canNext={canNext}
         isGameOver={isGameOver}
-        isThinking={engineStatus.thinking}
+        busy={busy}
       />
     </div>
   );

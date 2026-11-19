@@ -3,90 +3,56 @@ import { Chess } from 'chess.js';
 import {
   calculateMaterialAdvantage,
   getCapturedPieces,
-  classifyGameOutcome,
   formatEvaluation,
   validateFen,
   parseUciMove,
 } from '@/lib/chessUtils';
+import type { MoveRecord } from '@/types/chess';
 
 describe('chessUtils', () => {
-  it('correctly calculates initial material with no captures', () => {
+  it('calculates initial material and tracks recorded captures', () => {
     const chess = new Chess();
-    const captured = getCapturedPieces(chess);
-    expect(captured.white).toEqual([]);
-    expect(captured.black).toEqual([]);
+    expect(getCapturedPieces([])).toEqual({ white: [], black: [] });
+    expect(calculateMaterialAdvantage(chess)).toEqual({ white: 0, black: 0 });
 
-    const adv = calculateMaterialAdvantage(captured);
-    expect(adv.white).toBe(0);
-    expect(adv.black).toBe(0);
+    const history: MoveRecord[] = ['e4', 'd5', 'exd5'].map((san) => {
+      const move = chess.move(san);
+      return {
+        san,
+        uci: move.lan,
+        fen: move.after,
+        color: move.color,
+        moveNumber: 1,
+        captured: move.captured ?? null,
+        timeMs: null,
+      };
+    });
+    expect(getCapturedPieces(history)).toEqual({ white: ['p'], black: [] });
+    expect(calculateMaterialAdvantage(chess)).toEqual({ white: 1, black: 0 });
   });
 
-  it('correctly identifies captured pieces and material advantage after captures', () => {
-    const chess = new Chess();
-    // 1. e4 d5 2. exd5 (White captures black pawn)
-    chess.move('e4');
-    chess.move('d5');
-    chess.move('exd5');
-
-    const captured = getCapturedPieces(chess);
-    expect(captured.white).toContain('p');
-    expect(captured.black).toEqual([]);
-
-    const adv = calculateMaterialAdvantage(captured);
-    expect(adv.white).toBe(1);
-    expect(adv.black).toBe(0);
+  it('calculates material in an imported position without inventing captures', () => {
+    const chess = new Chess('4k3/8/8/8/8/8/8/R3K3 b - - 0 1');
+    expect(getCapturedPieces([])).toEqual({ white: [], black: [] });
+    expect(calculateMaterialAdvantage(chess)).toEqual({ white: 5, black: 0 });
   });
 
-  it('correctly classifies checkmate outcome', () => {
-    const chess = new Chess();
-    // Scholar's mate: 1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7#
-    chess.move('e4');
-    chess.move('e5');
-    chess.move('Bc4');
-    chess.move('Nc6');
-    chess.move('Qh5');
-    chess.move('Nf6');
-    chess.move('Qxf7#');
-
-    expect(chess.isCheckmate()).toBe(true);
-    const outcome = classifyGameOutcome(chess);
-    expect(outcome).not.toBeNull();
-    expect(outcome?.result).toBe('white');
-    expect(outcome?.reason).toBe('checkmate');
-    expect(outcome?.winner).toBe('white');
+  it('validates FEN syntax for analysis', () => {
+    expect(validateFen(new Chess().fen())).toEqual({ valid: true });
+    expect(validateFen('completely invalid fen string').valid).toBe(false);
   });
 
-  it('correctly classifies stalemate outcome', () => {
-    // Known stalemate position: 8/8/8/8/8/7k/5Q2/7K b - - 0 1 (Black king on h3, White queen on f2, King on h1)
-    // Actually: King on a8, White King on c7, White Queen on b6 - black to move
-    const stalemateFen = 'k7/2K5/1Q6/8/8/8/8/8 b - - 0 1';
-    const chess = new Chess(stalemateFen);
-    expect(chess.isStalemate()).toBe(true);
-
-    const outcome = classifyGameOutcome(chess);
-    expect(outcome?.result).toBe('draw');
-    expect(outcome?.reason).toBe('stalemate');
-    expect(outcome?.winner).toBeNull();
-  });
-
-  it('validates legal and illegal FENs properly', () => {
-    const valid = validateFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
-    expect(valid.valid).toBe(true);
-
-    const invalid = validateFen('completely invalid fen string');
-    expect(invalid.valid).toBe(false);
-  });
-
-  it('formats centipawns and mate evaluation strings accurately', () => {
-    expect(formatEvaluation(150, null, 'white')).toBe('+1.5');
-    expect(formatEvaluation(-240, null, 'white')).toBe('-2.4');
-    expect(formatEvaluation(0, null, 'white')).toBe('0.0');
-    expect(formatEvaluation(null, 3, 'white')).toBe('M3 (Win)');
-    expect(formatEvaluation(null, -2, 'white')).toBe('M2 (Loss)');
+  it('formats White-relative centipawns in pawns and shows mate separately', () => {
+    expect(formatEvaluation(150, null)).toBe('+1.5');
+    expect(formatEvaluation(-240, null)).toBe('-2.4');
+    expect(formatEvaluation(0, null)).toBe('0.0');
+    expect(formatEvaluation(null, { winner: 'white', plies: 1 })).toBe('White mates in 1 ply');
+    expect(formatEvaluation(null, { winner: 'black', plies: 2 })).toBe('Black mates in 2 plies');
+    expect(formatEvaluation(null, { winner: 'white', plies: 0 })).toBe('White wins');
     expect(formatEvaluation(null, null)).toBe('—');
   });
 
-  it('parses UCI move correctly including promotion', () => {
+  it('parses UCI moves including promotion', () => {
     expect(parseUciMove('e2e4')).toEqual({ from: 'e2', to: 'e4', promotion: undefined });
     expect(parseUciMove('e7e8q')).toEqual({ from: 'e7', to: 'e8', promotion: 'q' });
   });

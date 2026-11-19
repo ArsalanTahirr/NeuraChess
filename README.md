@@ -1,5 +1,32 @@
 # NeuraChess
 
+## Run NeuraChess locally
+
+From the repository root, install the locked Python dependencies and start the backend.
+
+```sh
+uv sync --locked
+uv run --locked uvicorn neurachess.api.app:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, install and start the React frontend.
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. The Play page asks you to choose a side, calculation depth and evaluator before starting a match. A browser refresh resumes the saved match while the backend is still running. Set the time budget in **Settings** before starting a match. The **Analysis** page analyzes the board and FEN independently of the current match.
+
+Neural mode loads `checkpoints/model_v001.pt` on its first search using the checkpoint's architecture metadata and CPU inference. The checkpoint directory is gitignored. Put a trained checkpoint there or set `NEURACHESS_CHECKPOINT=/absolute/path/to/model.pt` before starting Uvicorn. Material mode works independently of the checkpoint.
+
+Use one Uvicorn worker. Game sessions live in memory and are cleared on restart. When deploying the frontend and backend on different origins, set the frontend's `VITE_API_URL` and the backend's comma-separated `NEURACHESS_CORS_ORIGINS`. The default CORS origins allow localhost and 127.0.0.1 on Vite's dev (5173) and preview (4173) ports.
+
+See the [API contract](frontend/API_CONTRACT.md) and [frontend verification commands](frontend/README.md#verification).
+
+Run the Python suite with `uv run --locked pytest` and lint with `uv run --locked ruff check .`. The real-checkpoint API test uses `checkpoints/model_v001.pt` and skips when the file is absent.
+
 ## Build the evaluation dataset
 
 Run this from the repository root on Linux or macOS.

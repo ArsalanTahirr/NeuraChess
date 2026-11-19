@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
+import type { ConnectionStatus as Connection } from '@/types/engine';
 
 type Page = 'play' | 'analysis' | 'about' | 'settings';
 
@@ -7,6 +8,7 @@ interface AppShellProps {
   currentPage: Page;
   onNavigate: (page: Page) => void;
   children: React.ReactNode;
+  connection: Connection;
 }
 
 const NAV_TABS: { id: Page; label: string }[] = [
@@ -48,18 +50,18 @@ function KnightIcon() {
   );
 }
 
-function ConnectionStatus({ mode = 'demo' }: { mode?: 'connected' | 'demo' | 'error' }) {
+function ConnectionStatus({ mode }: { mode: Connection }) {
   const dotColor =
     mode === 'connected'
       ? '#4ade80'
-      : mode === 'error'
+      : mode === 'offline'
       ? '#ef4444'
       : '#b87333';
 
-  const label = mode === 'connected' ? 'ENGINE' : mode === 'error' ? 'ERROR' : 'DEMO';
+  const label = mode === 'connected' ? 'ENGINE' : mode === 'offline' ? 'OFFLINE' : 'CONNECTING';
 
   return (
-    <div className="flex items-center gap-1.5 shrink-0">
+    <div className="flex items-center gap-1.5 shrink-0" role="status" aria-label={label}>
       <span
         style={{
           width: 7,
@@ -71,6 +73,7 @@ function ConnectionStatus({ mode = 'demo' }: { mode?: 'connected' | 'demo' | 'er
         }}
       />
       <span
+        className="hidden sm:inline"
         style={{
           fontSize: 10,
           letterSpacing: '0.08em',
@@ -86,11 +89,11 @@ function ConnectionStatus({ mode = 'demo' }: { mode?: 'connected' | 'demo' | 'er
   );
 }
 
-export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
+export function AppShell({ currentPage, onNavigate, children, connection }: AppShellProps) {
   return (
     <div className="flex flex-col min-h-screen bg-[var(--color-surface-base)] text-[var(--color-text-primary)]">
       {/* Header */}
-      <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 bg-[rgba(14,13,11,0.96)] backdrop-blur-md border-b border-[var(--color-border-subtle)]">
+      <header className="sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 bg-[var(--color-surface-base)]/95 backdrop-blur-md border-b border-[var(--color-border-subtle)]">
         {/* Left: Wordmark */}
         <div className="flex items-center gap-2 sm:gap-2.5 sm:min-w-[160px]">
           <KnightIcon />
@@ -140,7 +143,7 @@ export function AppShell({ currentPage, onNavigate, children }: AppShellProps) {
 
         {/* Right: Connection status */}
         <div className="flex items-center justify-end sm:min-w-[160px]">
-          <ConnectionStatus mode="demo" />
+          <ConnectionStatus mode={connection} />
         </div>
       </header>
 

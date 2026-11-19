@@ -14,18 +14,18 @@ export const NOTABLE_PRESETS: PresetPosition[] = [
   },
   {
     name: 'Ruy López',
-    fen: 'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK1NR w KQkq - 2 3',
-    description: 'The Spanish Opening: White pressure on Black pawn defender.',
+    fen: 'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3',
+    description: 'White’s bishop pressures the knight that defends the e5 pawn.',
   },
   {
     name: "King's Indian",
-    fen: 'rnbqkb1r/ppp1pppp/3p1n2/8/2PP4/2N5/PP2PPPP/R1BQKBNR w KQkq - 0 3',
+    fen: 'rnbqk2r/ppp1ppbp/3p1np1/8/2PPP3/2N5/PP3PPP/R1BQKBNR w KQkq - 0 5',
     description: 'Hypermodern counter-attacking defensive structure.',
   },
   {
     name: 'Tactical Sacrifice',
-    fen: 'r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4',
-    description: 'Center game with tactical fork and pinned diagonals.',
+    fen: 'r1bqkb1r/ppp2ppp/2n5/3np1N1/2B5/8/PPPP1PPP/RNBQK2R w KQkq - 0 6',
+    description: 'In the Fried Liver Attack, White can sacrifice on f7 to fork the queen and rook.',
   },
   {
     name: 'Rook Endgame',

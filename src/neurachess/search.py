@@ -5,14 +5,15 @@ from collections.abc import Callable
 import chess
 
 from neurachess.evaluation import MATE_SCORE, classical_evaluate
-from neurachess.move_ordering import order_moves
+from neurachess.move_ordering import order_material_root_moves, order_moves
 from neurachess.quiescence import quiescence
+from neurachess.rules import game_outcome
 from neurachess.search_utils import SearchTimeout, check_timeout
 from neurachess.transposition import TranspositionTable, TTEntry, TTFlag, position_key
 
 
 def minimax(board: chess.Board, depth: int) -> int:
-    if depth == 0 or board.is_game_over():
+    if depth == 0 or game_outcome(board) is not None:
         return classical_evaluate(board)
 
     scores = []
@@ -27,7 +28,7 @@ def minimax(board: chess.Board, depth: int) -> int:
 
 
 def alpha_beta(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
-    if depth == 0 or board.is_game_over():
+    if depth == 0 or game_outcome(board) is not None:
         return classical_evaluate(board)
 
     if board.turn == chess.WHITE:
@@ -57,7 +58,7 @@ def alpha_beta(board: chess.Board, depth: int, alpha: float, beta: float) -> int
 def find_best_move(board: chess.Board, depth: int) -> chess.Move | None:
     if depth < 1:
         raise ValueError("depth must be at least 1")
-    if board.is_game_over():
+    if game_outcome(board) is not None:
         return None
 
     white_to_move = board.turn == chess.WHITE
@@ -81,7 +82,7 @@ def find_best_move(board: chess.Board, depth: int) -> chess.Move | None:
 
 
 def negamax_ab(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
-    if depth == 0 or board.is_game_over():
+    if depth == 0 or game_outcome(board) is not None:
         color = 1 if board.turn == chess.WHITE else -1
         return color * classical_evaluate(board)
 
@@ -104,7 +105,7 @@ def negamax_best_move(board: chess.Board, depth: int) -> tuple[chess.Move | None
         raise ValueError("depth must be at least 1")
 
     color = 1 if board.turn == chess.WHITE else -1
-    if board.is_game_over():
+    if game_outcome(board) is not None:
         return None, color * classical_evaluate(board)
 
     alpha = float("-inf")
@@ -164,14 +165,12 @@ def negamax_ab_timed(
 ) -> int:
     check_timeout(deadline)
 
-    if board.is_checkmate():
-        return -MATE_SCORE + ply
-
-    if board.is_game_over():
-        return 0
-
     if depth == 0:
         return quiescence(board, alpha, beta, deadline, evaluator=evaluator, ply=ply)
+
+    outcome = game_outcome(board)
+    if outcome is not None:
+        return -MATE_SCORE + ply if outcome.winner is not None else 0
 
     entry, key = None, None
     if tt is not None:
@@ -254,9 +253,9 @@ def negamax_best_move_timed(
         raise ValueError("depth must be at least 1")
     check_timeout(deadline)
 
-    color = 1 if board.turn == chess.WHITE else -1
-    if board.is_game_over():
-        return None, color * classical_evaluate(board)
+    outcome = game_outcome(board)
+    if outcome is not None:
+        return None, -MATE_SCORE if outcome.winner is not None else 0
 
     alpha = float("-inf")
     beta = float("inf")
@@ -264,7 +263,12 @@ def negamax_best_move_timed(
     best_score = float("-inf")
     best_move = None
 
-    for move in order_moves(board):
+    moves = (
+        order_material_root_moves(board)
+        if evaluator is classical_evaluate
+        else order_moves(board)
+    )
+    for move in moves:
         check_timeout(deadline)
         board.push(move)
         try:
@@ -300,8 +304,9 @@ def iterative_deepening_timed(
 
     color = 1 if board.turn == chess.WHITE else -1
 
-    if board.is_game_over():
-        return None, color * classical_evaluate(board), 0
+    outcome = game_outcome(board)
+    if outcome is not None:
+        return None, -MATE_SCORE if outcome.winner is not None else 0, 0
 
     deadline = time.perf_counter() + time_limit
     best_move = next(iter(board.legal_moves))

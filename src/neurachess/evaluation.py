@@ -1,5 +1,7 @@
 import chess
 
+from neurachess.rules import game_outcome
+
 PIECE_VALUES = {
     chess.PAWN: 100,
     chess.KNIGHT: 320,
@@ -22,7 +24,7 @@ def evaluate_material(board: chess.Board) -> int:
 
 
 def classical_evaluate(board: chess.Board) -> int:
-    outcome = board.outcome()
+    outcome = game_outcome(board)
     if outcome is not None:
         if outcome.winner is None:
             return 0

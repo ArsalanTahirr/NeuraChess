@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface ThinkingIndicatorProps {
   isThinking: boolean;
+  ready?: boolean;
 }
 
 const prefersReducedMotion =
@@ -131,6 +132,7 @@ const NodeGraph: React.FC<{ isThinking: boolean }> = ({ isThinking }) => {
 
 export const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = ({
   isThinking,
+  ready = true,
 }) => {
   return (
     <div
@@ -146,52 +148,54 @@ export const ThinkingIndicator: React.FC<ThinkingIndicatorProps> = ({
     >
       <NodeGraph isThinking={isThinking} />
 
-      <AnimatePresence mode="wait">
-        {isThinking ? (
-          <motion.div
-            key="thinking"
-            initial={{ opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-            }}
-          >
-            <ThinkingDots />
-            <span
+      <div className="h-4">
+        <AnimatePresence mode="wait">
+          {isThinking ? (
+            <motion.div
+              key="thinking"
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <ThinkingDots />
+              <span
+                style={{
+                  fontSize: 9,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-accent, #b87333)',
+                  fontFamily: 'monospace',
+                }}
+              >
+                Thinking
+              </span>
+            </motion.div>
+          ) : ready ? (
+            <motion.div
+              key="ready"
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -3 }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
               style={{
                 fontSize: 9,
-                letterSpacing: '0.14em',
+                letterSpacing: '0.16em',
                 textTransform: 'uppercase',
-                color: 'var(--color-accent, #b87333)',
+                color: 'var(--color-text-tertiary, #605848)',
                 fontFamily: 'monospace',
               }}
             >
-              Thinking
-            </span>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="ready"
-            initial={{ opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.18 }}
-            style={{
-              fontSize: 9,
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-              color: 'var(--color-text-tertiary, #605848)',
-              fontFamily: 'monospace',
-            }}
-          >
-            ◆ READY
-          </motion.div>
-        )}
-      </AnimatePresence>
+              ◆ READY
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

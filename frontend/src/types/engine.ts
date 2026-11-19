@@ -1,50 +1,27 @@
-export interface EngineCapabilities {
-  supportsAnalysis: boolean;
-  supportsEvaluation: boolean;
-  supportsMultiPV: boolean;
+import type { PlayerColor } from './chess';
+
+export type EvaluationMode = 'material' | 'neural';
+export type ConnectionStatus = 'checking' | 'connected' | 'offline';
+
+export interface SearchOptions {
+  evaluationMode: EvaluationMode;
   maxDepth: number;
-  engineName: string;
-  engineVersion: string;
-  mode: 'demo' | 'neural' | 'full';
+  timeLimitMs: number;
 }
 
-export interface BestMoveRequest {
+export interface MateScore {
+  winner: PlayerColor;
+  plies: number;
+}
+
+export interface SearchResult {
   fen: string;
-  timeLimit?: number;
-  maxDepth?: number;
-  multiPV?: number;
-}
-
-export interface BestMoveResponse {
-  move: string; // UCI format e.g. "e2e4"
-  score: number | null; // centipawns from mover's perspective, null if unavailable
-  depth: number | null;
-  nodes: number | null;
-  time: number | null; // ms
-  pv: string[] | null; // principal variation in UCI
-  mateIn: number | null;
-}
-
-export interface AnalysisRequest {
-  fen: string;
-  depth?: number;
-  multiPV?: number;
-}
-
-export interface AnalysisResponse {
-  fen: string;
-  score: number | null; // centipawns from WHITE's perspective
-  depth: number | null;
-  nodes: number | null;
-  time: number | null;
-  pv: string[] | null;
-  mateIn: number | null;
-  evaluation: 'centipawn' | 'mate' | 'unknown';
-}
-
-export interface EngineStatus {
-  connected: boolean;
-  thinking: boolean;
-  mode: 'demo' | 'neural' | 'full';
-  error: string | null;
+  evaluationMode: EvaluationMode;
+  move: string | null; // UCI
+  san: string | null;
+  scoreCp: number | null; // White-relative centipawns
+  mate: MateScore | null;
+  depth: number;
+  timeMs: number;
+  status: 'completed' | 'time-limit' | 'terminal';
 }

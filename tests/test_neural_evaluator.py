@@ -31,3 +31,8 @@ def test_checkpoint_loads_in_eval_mode(tmp_path, legacy):
     assert not evaluator.model.training
     assert evaluator.checkpoint_configuration["dropout"] == dropout
     assert evaluator.evaluate(chess.Board()) == 150
+
+    board = chess.Board("4k3/8/8/8/8/8/8/R3K3 w - - 99 51")
+    assert evaluator.evaluate(board) == 150
+    board.push_uci("a1a2")
+    assert evaluator.evaluate(board) == 0

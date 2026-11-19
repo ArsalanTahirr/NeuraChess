@@ -4,6 +4,7 @@ import pytest
 from neurachess import search
 from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.quiescence import quiescence
+from neurachess.rules import game_outcome
 
 INF = float("inf")
 WHITE_WINNING = "4k3/8/8/8/8/8/8/3QK3 w - - 0 1"
@@ -57,10 +58,9 @@ def test_check_timeout_returns_before_deadline(frozen_clock):
 
 def reference_negamax(board, depth, ply=0):
     """Unpruned search with the current quiescence leaf evaluation."""
-    if board.is_checkmate():
-        return -MATE_SCORE + ply
-    if board.is_game_over():
-        return 0
+    outcome = game_outcome(board)
+    if outcome is not None:
+        return -MATE_SCORE + ply if outcome.winner is not None else 0
     if depth == 0:
         return quiescence(board, -INF, INF, ply=ply)
     scores = []
@@ -71,6 +71,58 @@ def reference_negamax(board, depth, ply=0):
         finally:
             board.pop()
     return max(scores)
+
+
+def test_winning_rook_avoids_third_occurrence(frozen_clock, monkeypatch):
+    board = chess.Board("5r2/ppp1p2k/3pb3/3p4/8/4K3/8/8 w - - 2 48")
+    cycle = ["e3e2", "f8g8", "e2e3", "g8f8"]
+    for uci in (cycle * 2)[:-1]:
+        board.push_uci(uci)
+    repeating_move = chess.Move.from_uci(cycle[-1])
+    original = board.copy(stack=True)
+
+    # Put the draw first so move ordering cannot mask a missed draw.
+    monkeypatch.setattr(
+        search,
+        "order_material_root_moves",
+        lambda board: sorted(
+            board.legal_moves, key=lambda move: move != repeating_move
+        ),
+    )
+    assert game_outcome(board) is None
+    move, score, depth = search.iterative_deepening_timed(board, 1, 1)
+    assert move in board.legal_moves and move != repeating_move
+    assert score > 0 and depth == 1
+    assert_board_restored(board, original)
+
+    board.push(repeating_move)
+    assert game_outcome(board).termination == chess.Termination.THREEFOLD_REPETITION
+    assert search.iterative_deepening_timed(board, 2, 1) == (None, 0, 0)
+    assert search.negamax_ab_timed(board, 1, -INF, INF, 101) == 0
+    assert quiescence(board, -INF, INF) == 0
+
+
+def test_material_prefers_development_to_rook_shuffle(frozen_clock):
+    board = chess.Board()
+    for san in ["e4", "Nh6", "Bc4", "Rg8", "Qf3", "Rh8", "Qe2", "Rg8", "Qf3"]:
+        board.push_san(san)
+    original = board.copy(stack=True)
+
+    move, score, depth = search.iterative_deepening_timed(board, 4, 1.2)
+
+    assert move in (chess.Move.from_uci("e7e6"), chess.Move.from_uci("e7e5"))
+    assert (score, depth) == (0, 4)
+    assert_board_restored(board, original)
+
+
+def test_timed_search_scores_reached_fifty_move_draw(frozen_clock):
+    board = chess.Board("4k3/8/8/8/8/8/8/R3K3 w - - 99 51")
+    assert game_outcome(board) is None
+    move, score, depth = search.iterative_deepening_timed(board, 2, 1)
+    assert move in board.legal_moves
+    assert (score, depth) == (0, 2)
+    board.push(move)
+    assert game_outcome(board).termination == chess.Termination.FIFTY_MOVES
 
 
 @pytest.mark.parametrize("fen", ACTIVE_POSITIONS)

@@ -6,8 +6,9 @@ import { PromotionDialog } from './PromotionDialog';
 
 interface ChessBoardProps {
   position: string; // FEN
+  analysisArrows?: [Square, Square, string?][];
   orientation: 'white' | 'black';
-  onMove: (from: Square, to: Square, promotion?: string) => boolean;
+  onMove: (from: Square, to: Square, promotion?: string) => boolean | 'pending';
   lastMove: { from: Square; to: Square } | null;
   isCheck: boolean;
   kingSquare: Square | null;
@@ -31,6 +32,7 @@ const BOARD_THEMES: Record<BoardTheme, { light: string; dark: string }> = {
 
 export function ChessBoard({
   position,
+  analysisArrows,
   orientation,
   onMove,
   lastMove,
@@ -55,15 +57,21 @@ export function ChessBoard({
     color: 'w' | 'b';
   } | null>(null);
 
+  useEffect(() => {
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+  }, [position, isLiveGame]);
+
   // Responsive board width calculation
   useEffect(() => {
     const updateSize = () => {
       if (!containerRef.current) return;
-      const { clientWidth, clientHeight } = containerRef.current;
-      // Maintain 1:1 aspect ratio bounded by container width and available vertical height
-      const availableHeight = clientHeight > 100 ? clientHeight : window.innerHeight - 200;
-      const size = Math.min(clientWidth, availableHeight, 620);
-      setBoardWidth(Math.max(280, Math.floor(size)));
+      const container = containerRef.current;
+      const { paddingLeft, paddingRight } = window.getComputedStyle(container);
+      const contentWidth = container.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight);
+      // Leave room for the header, player rows, and padding around the board.
+      const size = Math.min(contentWidth, Math.max(280, window.innerHeight - 208), 620);
+      if (size > 0) setBoardWidth(Math.floor(size));
     };
 
     updateSize();
@@ -181,7 +189,7 @@ export function ChessBoard({
             to: targetSquare,
             color: piece.color,
           });
-          return true;
+          return false;
         }
       }
 
@@ -190,7 +198,8 @@ export function ChessBoard({
       if (success) {
         setSelectedSquare(null);
       }
-      return success;
+      // Server-backed moves are animated when the confirmed FEN arrives.
+      return success === true;
     },
     [isLiveGame, isGameOver, isThinking, isPromotionMove, position, onMove]
   );
@@ -265,6 +274,7 @@ export function ChessBoard({
       >
         <Chessboard
           position={position}
+          customArrows={analysisArrows}
           boardOrientation={orientation}
           boardWidth={boardWidth}
           onPieceDrop={onPieceDrop}

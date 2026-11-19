@@ -4,6 +4,7 @@ import torch
 from neurachess.evaluation import MATE_SCORE
 from neurachess.neural.encoding import encode_board
 from neurachess.neural.model import ChessEvaluator
+from neurachess.rules import game_outcome
 
 
 class NeuralEvaluator:
@@ -81,7 +82,7 @@ class NeuralEvaluator:
 
     @torch.inference_mode()
     def evaluate(self, board):
-        result = board.outcome(claim_draw=True)
+        result = game_outcome(board)
         if result is not None:
             if result.winner is None:
                 return 0
