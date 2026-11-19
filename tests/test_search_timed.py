@@ -2,7 +2,7 @@ import chess
 import pytest
 
 from neurachess import search
-from neurachess.evaluation import MATE_SCORE, evaluate
+from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.quiescence import quiescence
 
 INF = float("inf")
@@ -55,17 +55,19 @@ def test_check_timeout_returns_before_deadline(frozen_clock):
     assert search.check_timeout(100.1) is None
 
 
-def reference_negamax(board, depth):
+def reference_negamax(board, depth, ply=0):
     """Unpruned search with the current quiescence leaf evaluation."""
+    if board.is_checkmate():
+        return -MATE_SCORE + ply
     if board.is_game_over():
-        return (1 if board.turn == chess.WHITE else -1) * evaluate(board)
+        return 0
     if depth == 0:
-        return quiescence(board, -INF, INF)
+        return quiescence(board, -INF, INF, ply=ply)
     scores = []
     for move in list(board.legal_moves):
         board.push(move)
         try:
-            scores.append(-reference_negamax(board, depth - 1))
+            scores.append(-reference_negamax(board, depth - 1, ply + 1))
         finally:
             board.pop()
     return max(scores)
@@ -89,7 +91,7 @@ def test_timed_best_move_has_optimal_quiescence_score(frozen_clock, fen, depth):
     assert move in board.legal_moves
     assert score == expected
     board.push(move)
-    assert -reference_negamax(board, depth - 1) == expected
+    assert -reference_negamax(board, depth - 1, ply=1) == expected
 
 
 @pytest.mark.parametrize("fen", [WHITE_WINNING, BLACK_WINNING])
@@ -158,7 +160,7 @@ def test_timed_search_restores_board_and_propagates_evaluation_errors(
     board.push_uci("e2e4")
     original = board.copy(stack=True)
 
-    def broken_evaluation(*args):
+    def broken_evaluation(*args, **kwargs):
         raise RuntimeError("evaluation failed")
 
     monkeypatch.setattr(search, "quiescence", broken_evaluation)
@@ -214,7 +216,7 @@ def test_timed_iterative_deepening_completes_max_depth(frozen_clock, fen):
     assert depth == 2
     assert_board_restored(board, original)
     board.push(move)
-    assert -reference_negamax(board, 1) == score
+    assert -reference_negamax(board, 1, ply=1) == score
 
 
 @pytest.mark.parametrize("mirrored", [False, True], ids=["original", "color-swapped"])
@@ -247,7 +249,7 @@ def test_timed_iterative_deepening_immediate_timeout_returns_legal_fallback(
     move, score, depth = search.iterative_deepening_timed(board, 3, 1.0)
 
     assert move in board.legal_moves
-    assert score == color * evaluate(board)
+    assert score == color * classical_evaluate(board)
     assert depth == 0
     assert_board_restored(board, original)
 
@@ -264,7 +266,7 @@ def test_timed_iterative_deepening_keeps_last_completed_result(
     ]
     calls = []
 
-    def timed_best_move(current_board, depth, deadline, tt):
+    def timed_best_move(current_board, depth, deadline, tt, evaluator):
         assert current_board is board
         # Every iteration must share the original time budget.
         assert deadline == 101.0
@@ -302,10 +304,10 @@ def test_timed_iterative_deepening_restores_history_after_partial_iteration(
                 return 101.0
         return 100.0
 
-    def timed_best_move(current_board, depth, deadline, tt):
+    def timed_best_move(current_board, depth, deadline, tt, evaluator):
         nonlocal current_depth
         current_depth = depth
-        return real_best_move(current_board, depth, deadline, tt)
+        return real_best_move(current_board, depth, deadline, tt, evaluator)
 
     monkeypatch.setattr(search.time, "perf_counter", clock)
     monkeypatch.setattr(search, "negamax_best_move_timed", timed_best_move)
@@ -324,3 +326,31 @@ def test_timed_iterative_deepening_propagates_unexpected_errors(
     monkeypatch.setattr(search, "negamax_best_move_timed", broken_search)
     with pytest.raises(RuntimeError, match="search failed"):
         search.iterative_deepening_timed(chess.Board(), 3, 1.0)
+
+
+def test_fallback_evaluation_counts_toward_deadline(monkeypatch):
+    board = chess.Board()
+    now = 100.0
+    evaluations = []
+
+    def evaluate(board):
+        nonlocal now
+        evaluations.append(board.fen())
+        now += 2
+        return 123
+
+    monkeypatch.setattr(search.time, "perf_counter", lambda: now)
+    move, score, depth = search.iterative_deepening_timed(board, 1, 1, evaluate)
+    assert move in board.legal_moves
+    assert (score, depth) == (123, 0)
+    assert evaluations == [board.fen()]
+
+
+def test_cached_mate_score_tracks_distance_from_root(frozen_clock):
+    board = chess.Board(MATE_IN_ONE)
+    table = {}
+    assert search.negamax_ab_timed(board, 1, -INF, INF, 101, table) == MATE_SCORE - 1
+    assert (
+        search.negamax_ab_timed(board, 1, -INF, INF, 101, table, ply=2)
+        == MATE_SCORE - 3
+    )
