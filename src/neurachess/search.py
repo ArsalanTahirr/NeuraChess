@@ -80,7 +80,7 @@ def find_best_move(board: chess.Board, depth: int) -> chess.Move | None:
 
     return best_move
 
-
+# min(a, b) = -max(-a, -b)
 def negamax_ab(board: chess.Board, depth: int, alpha: float, beta: float) -> int:
     if depth == 0 or game_outcome(board) is not None:
         color = 1 if board.turn == chess.WHITE else -1
@@ -248,6 +248,7 @@ def negamax_best_move_timed(
     deadline: float,
     tt: TranspositionTable | None = None,
     evaluator: Callable = classical_evaluate,
+    preferred_move: chess.Move | None = None,
 ) -> tuple[chess.Move | None, int]:
     if depth < 1:
         raise ValueError("depth must be at least 1")
@@ -268,6 +269,9 @@ def negamax_best_move_timed(
         if evaluator is classical_evaluate
         else order_moves(board)
     )
+    if preferred_move in moves:
+        moves.remove(preferred_move)
+        moves.insert(0, preferred_move)
     for move in moves:
         check_timeout(deadline)
         board.push(move)
@@ -317,7 +321,14 @@ def iterative_deepening_timed(
 
     for depth in range(1, max_depth + 1):
         try:
-            move, score = negamax_best_move_timed(board, depth, deadline, tt, evaluator)
+            move, score = negamax_best_move_timed(
+                board,
+                depth,
+                deadline,
+                tt,
+                evaluator,
+                best_move if completed_depth else None,
+            )
             check_timeout(deadline)
         except SearchTimeout:
             break

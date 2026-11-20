@@ -3,6 +3,7 @@ import torch
 
 from neurachess.evaluation import MATE_SCORE
 from neurachess.neural.encoding import encode_board
+from neurachess.neural.mlp_inference import MLPAccumulator, MLPWeights
 from neurachess.neural.model import ChessEvaluator
 from neurachess.neural.nnue import ARCHITECTURE, KingBucketNNUE
 from neurachess.neural.nnue_inference import NNUEAccumulator, NNUEWeights
@@ -98,12 +99,13 @@ class NeuralEvaluator:
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()
+        self.mlp_weights = MLPWeights(self.model)
 
     def for_search(self):
         """Give each search its own accumulators. Search adjudicates terminal boards."""
         if self.nnue_weights is not None:
             return NNUEAccumulator(self.nnue_weights)
-        return self.evaluate
+        return MLPAccumulator(self.mlp_weights)
 
     @torch.inference_mode()
     def evaluate(self, board):

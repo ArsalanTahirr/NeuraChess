@@ -319,7 +319,7 @@ def test_real_neural_checkpoint_search_reuse_and_mode_switch(
         chess.Board(), 1, 1.2, actual_evaluator.evaluate
     )
     assert opening.last_search.move == expected_move.uci()
-    assert opening.last_search.score_cp == pytest.approx(score)
+    assert opening.last_search.score_cp == pytest.approx(score, abs=0.001)
     assert opening.last_search.depth == depth == 1
 
     board = chess.Board(opening.fen)
@@ -332,7 +332,7 @@ def test_real_neural_checkpoint_search_reuse_and_mode_switch(
     _, black_root_score, expected_depth = search.iterative_deepening_timed(
         board, 1, 1.2, actual_evaluator.evaluate
     )
-    assert analysis.score_cp == pytest.approx(-black_root_score)
+    assert analysis.score_cp == pytest.approx(-black_root_score, abs=0.001)
     assert analysis.depth == expected_depth == 1
     assert load_calls == [checkpoint]
     assert GameState.model_validate(client.get(f"/games/{game.id}").json()) == opening

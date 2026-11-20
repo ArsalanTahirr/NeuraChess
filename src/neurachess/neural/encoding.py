@@ -17,6 +17,16 @@ PIECE_TO_PLANE = {
 }
 
 
+def position_flags(board: chess.Board) -> tuple[bool, ...]:
+    return (
+        board.turn == chess.WHITE,
+        board.has_kingside_castling_rights(chess.WHITE),
+        board.has_queenside_castling_rights(chess.WHITE),
+        board.has_kingside_castling_rights(chess.BLACK),
+        board.has_queenside_castling_rights(chess.BLACK),
+    )
+
+
 def encode_board(board: chess.Board) -> torch.Tensor:
     features = [0.0] * (12 * 64)
 
@@ -25,13 +35,5 @@ def encode_board(board: chess.Board) -> torch.Tensor:
         # Each plane starts at rank 8, while python-chess numbers from rank 1.
         features[plane_index * 64 + chess.square_mirror(square)] = 1.0
 
-    features.extend(
-        (
-            board.turn == chess.WHITE,
-            board.has_kingside_castling_rights(chess.WHITE),
-            board.has_queenside_castling_rights(chess.WHITE),
-            board.has_kingside_castling_rights(chess.BLACK),
-            board.has_queenside_castling_rights(chess.BLACK),
-        )
-    )
+    features.extend(position_flags(board))
     return torch.tensor(features, dtype=torch.float32)

@@ -318,10 +318,11 @@ def test_timed_iterative_deepening_keeps_last_completed_result(
     ]
     calls = []
 
-    def timed_best_move(current_board, depth, deadline, tt, evaluator):
+    def timed_best_move(current_board, depth, deadline, tt, evaluator, preferred_move):
         assert current_board is board
         # Every iteration must share the original time budget.
         assert deadline == 101.0
+        assert preferred_move == (results[depth - 2][0] if depth > 1 else None)
         calls.append(depth)
         if depth > completed_depth:
             raise search.SearchTimeout
@@ -356,10 +357,12 @@ def test_timed_iterative_deepening_restores_history_after_partial_iteration(
                 return 101.0
         return 100.0
 
-    def timed_best_move(current_board, depth, deadline, tt, evaluator):
+    def timed_best_move(current_board, depth, deadline, tt, evaluator, preferred_move):
         nonlocal current_depth
         current_depth = depth
-        return real_best_move(current_board, depth, deadline, tt, evaluator)
+        return real_best_move(
+            current_board, depth, deadline, tt, evaluator, preferred_move
+        )
 
     monkeypatch.setattr(search.time, "perf_counter", clock)
     monkeypatch.setattr(search, "negamax_best_move_timed", timed_best_move)
