@@ -1,64 +1,59 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/Button';
 import { ChessBoard } from '@/components/chess/ChessBoard';
 import { EvaluationBar } from '@/components/chess/EvaluationBar';
 import { PlayerInfo } from '@/components/chess/PlayerInfo';
 import { GamePanel } from '@/components/chess/GamePanel';
 import { GameSetupModal } from '@/components/chess/GameSetupModal';
 import { GameOverOverlay } from '@/components/chess/GameOverOverlay';
-import { useGameState } from '@/features/game/useGameState';
+import type { useGameState } from '@/features/game/useGameState';
 import { useSettings } from '@/features/settings/settingsContext';
-import { createAdapter } from '@/api';
-import { calculateMaterialAdvantage } from '@/lib/chessUtils';
 import type { PlayerColor } from '@/types/chess';
+import type { ConnectionStatus, EvaluationMode } from '@/types/engine';
 
-export function PlayPage() {
+interface PlayPageProps {
+  game: ReturnType<typeof useGameState>;
+  connection: ConnectionStatus;
+}
+
+export function PlayPage({ game, connection }: PlayPageProps) {
   const { settings } = useSettings();
-  const [playerColor, setPlayerColor] = useState<PlayerColor>(settings.defaultPlayerColor);
-  const [showSetupModal, setShowSetupModal] = useState<boolean>(false);
-  const [showGameOverReview, setShowGameOverReview] = useState<boolean>(true);
-
-  // Initialize engine adapter once
-  const adapter = useMemo(() => createAdapter(), []);
-
-  // Central chess state
+  const [manualSetup, setManualSetup] = useState(false);
+  const [dismissedSetup, setDismissedSetup] = useState(false);
+  const [dismissedOutcome, setDismissedOutcome] = useState<typeof game.outcome>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
   const {
-    fen,
-    turn,
-    isCheck,
-    isGameOver,
-    kingSquare,
-    outcome,
-    moveHistory,
-    currentMoveIndex,
-    lastMove,
-    capturedPieces,
-    isBoardFlipped,
-    isLiveGame,
-    engineStatus,
-    lastEngineResponse,
-    actions,
-  } = useGameState(adapter, playerColor);
+    fen, turn, isCheck, isGameOver, kingSquare, outcome, moveHistory, currentMoveIndex,
+    lastMove, capturedPieces, materialAdvantage, playerColor, orientation, isLiveGame,
+    lastSearch, evaluationMode, busy, thinking, error, canMove, canUndo, canRetry, actions,
+    hasGame, pendingRestore, restoreError,
+  } = game;
 
-  // Material calculation
-  const materialAdvantage = useMemo(
-    () => calculateMaterialAdvantage(capturedPieces),
-    [capturedPieces]
-  );
+  const showSetupModal = manualSetup || (!hasGame && !pendingRestore && !dismissedSetup);
 
-  const handleStartGame = (color: PlayerColor, depth: number) => {
-    setPlayerColor(color);
-    setShowSetupModal(false);
-    setShowGameOverReview(true);
-    actions.newGame();
+  const openSetup = () => {
+    setSetupError(null);
+    setManualSetup(true);
   };
 
-  // Players definition based on color & orientation
-  const isPlayerWhite = playerColor === 'white';
-  const isEngineTurn = turn !== (isPlayerWhite ? 'w' : 'b');
+  const handleStartGame = async (color: PlayerColor, depth: number, mode: EvaluationMode) => {
+    setSetupError(null);
+    try {
+      await actions.newGame({
+        playerColor: color,
+        maxDepth: depth,
+        evaluationMode: mode,
+        timeLimitMs: settings.engineTimeLimit,
+      });
+      setManualSetup(false);
+      setDismissedOutcome(null);
+    } catch (cause) {
+      setSetupError((cause as Error).message);
+    }
+  };
 
-  // Top player is the opponent / engine (unless flipped)
-  const topColor: PlayerColor = isBoardFlipped ? playerColor : isPlayerWhite ? 'black' : 'white';
-  const bottomColor: PlayerColor = isBoardFlipped ? (isPlayerWhite ? 'black' : 'white') : playerColor;
+  const bottomColor = orientation;
+  const topColor = orientation === 'white' ? 'black' : 'white';
 
   const isTopActive = topColor === 'white' ? turn === 'w' : turn === 'b';
   const isBottomActive = bottomColor === 'white' ? turn === 'w' : turn === 'b';
@@ -68,17 +63,17 @@ export function PlayPage() {
       {/* Main Game Arena */}
       <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6 w-full">
         {/* Evaluation Bar (Desktop) */}
-        <div className="hidden lg:flex items-center pt-10">
+        <div className="hidden shrink-0 lg:flex items-center pt-10">
           <EvaluationBar
-            score={lastEngineResponse?.score ?? null}
-            mateIn={lastEngineResponse?.mateIn ?? null}
-            orientation={isBoardFlipped ? 'black' : 'white'}
+            score={lastSearch?.scoreCp ?? null}
+            mate={lastSearch?.mate ?? null}
+            orientation={orientation}
             height={480}
           />
         </div>
 
         {/* Board Column (Centerpiece) */}
-        <div className="flex flex-col items-center w-full max-w-[620px]">
+        <div className="flex min-w-0 flex-col items-center w-full max-w-[620px]">
           {/* Top Player Info */}
           <div className="w-full mb-1">
             <PlayerInfo
@@ -100,20 +95,20 @@ export function PlayPage() {
           <div className="w-full flex items-center justify-center">
             <ChessBoard
               position={fen}
-              orientation={isBoardFlipped ? 'black' : 'white'}
+              orientation={orientation}
               onMove={actions.makeMove}
               lastMove={lastMove}
               isCheck={isCheck}
               kingSquare={kingSquare}
               isGameOver={isGameOver}
-              isThinking={engineStatus.thinking}
+              isThinking={thinking || busy}
               playerColor={playerColor}
               showCoordinates={settings.showCoordinates}
               showLegalMoves={settings.showLegalMoves}
               showLastMove={settings.showLastMove}
               boardTheme={settings.boardTheme}
               animatePieces={settings.animatePieces && !settings.reducedMotion}
-              isLiveGame={isLiveGame}
+              isLiveGame={isLiveGame && canMove}
             />
           </div>
 
@@ -136,47 +131,66 @@ export function PlayPage() {
         </div>
 
         {/* Right Intelligence & Progression Panel */}
-        <div className="w-full lg:w-[320px] mt-2 lg:mt-0">
+        <div className="w-full lg:w-[320px] lg:shrink-0 mt-2 lg:mt-0">
+          {pendingRestore && (
+            <div className="flex items-center justify-between gap-2 pb-3 text-sm">
+              <p role="status">{restoreError ?? (connection === 'offline'
+                ? 'Waiting for the server to resume your match.'
+                : 'Resuming your match…')}</p>
+              {restoreError && <Button size="sm" onClick={actions.retryRestore}>Retry</Button>}
+            </div>
+          )}
           <GamePanel
-            engineStatus={engineStatus}
-            lastResponse={lastEngineResponse}
+            connection={connection}
+            evaluationMode={evaluationMode}
+            thinking={thinking}
+            busy={busy || pendingRestore}
+            error={error}
+            onRetry={canRetry ? actions.retryEngine : undefined}
+            lastResponse={lastSearch}
             moves={moveHistory}
             currentIndex={currentMoveIndex}
             onNavigate={actions.navigateTo}
             isLiveGame={isLiveGame}
             onReturnToLive={actions.returnToLive}
-            onNewGame={() => setShowSetupModal(true)}
+            onNewGame={openSetup}
             onUndo={actions.undoMove}
-            onRedo={actions.redoMove}
+            onPrevious={() => actions.navigateTo(currentMoveIndex - 1)}
+            onNext={() => actions.navigateTo(currentMoveIndex + 1)}
             onFlipBoard={actions.flipBoard}
             onCopyFEN={actions.copyFEN}
             onImportFEN={actions.importFEN}
             onResign={actions.resign}
-            canUndo={moveHistory.length > 0 && isLiveGame}
-            canRedo={currentMoveIndex < moveHistory.length - 1}
+            canUndo={canUndo}
+            canPrevious={currentMoveIndex >= 0}
+            canNext={currentMoveIndex < moveHistory.length - 1}
             isGameOver={isGameOver}
           />
         </div>
       </div>
 
       {/* Game Setup Modal */}
-      <GameSetupModal
-        isOpen={showSetupModal}
+      {showSetupModal && <GameSetupModal
         initialColor={playerColor}
         initialDepth={settings.engineDepth}
+        busy={busy}
+        error={setupError ?? (!hasGame && !pendingRestore ? error : null)}
         onStartGame={handleStartGame}
-        onClose={() => setShowSetupModal(false)}
-      />
+        onClose={() => {
+          setManualSetup(false);
+          setDismissedSetup(true);
+        }}
+      />}
 
       {/* Game Over Outcome Modal */}
-      {outcome && showGameOverReview && (
+      {outcome && outcome !== dismissedOutcome && !showSetupModal && (
         <GameOverOverlay
           outcome={outcome}
           onNewGame={() => {
-            setShowGameOverReview(false);
-            setShowSetupModal(true);
+            setDismissedOutcome(outcome);
+            openSetup();
           }}
-          onDismiss={() => setShowGameOverReview(false)}
+          onDismiss={() => setDismissedOutcome(outcome)}
         />
       )}
     </div>

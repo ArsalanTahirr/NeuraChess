@@ -21,6 +21,10 @@ export function GameOverOverlay({ outcome, onNewGame, onDismiss }: GameOverOverl
         return 'Resignation';
       case 'threefold-repetition':
         return 'Threefold Repetition';
+      case 'fivefold-repetition':
+        return 'Fivefold Repetition';
+      case 'seventyfive-move':
+        return 'Seventy-Five-Move Rule';
       case 'insufficient-material':
         return 'Insufficient Material';
       case 'fifty-move':

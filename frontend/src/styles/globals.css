@@ -3,21 +3,21 @@
 @layer base {
   :root {
     /* Background palette - "The Intelligence Atelier" */
-    --color-surface-base: #0e0d0b;      /* deep midnight charcoal with warmth */
-    --color-surface-raised: #161411;    /* slightly elevated surfaces */
-    --color-surface-panel: #1c1a17;     /* deliberate panel surfaces */
-    --color-surface-inset: #0a0908;     /* recessed areas */
-    --color-surface-overlay: #242018;   /* modals and floating dialogs */
+    --color-surface-base: #211e1a;
+    --color-surface-raised: #29251f;
+    --color-surface-panel: #2d2923;
+    --color-surface-inset: #1b1815;
+    --color-surface-overlay: #363027;
     
     /* Fine structural borders */
-    --color-border-subtle: #2a2620;
-    --color-border-muted: #3a342c;
-    --color-border-emphasis: #504840;
+    --color-border-subtle: #413a31;
+    --color-border-muted: #51483c;
+    --color-border-emphasis: #635747;
     
     /* Controlled typographic hierarchy */
-    --color-text-primary: #f0ece4;      /* warm off-white */
-    --color-text-secondary: #9a9080;    /* muted warm slate */
-    --color-text-tertiary: #605848;     /* subtle captions & markers */
+    --color-text-primary: #e9e2d6;      /* warm off-white */
+    --color-text-secondary: #c3b8a6;
+    --color-text-tertiary: #afa28f;     /* subtle captions & markers */
     --color-text-disabled: #3a3228;
     
     /* Signature Accent: Restrained Copper / Amber */

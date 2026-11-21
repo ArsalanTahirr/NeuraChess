@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  RotateCcw,
-  RotateCw,
+  ChevronLeft,
+  ChevronRight,
   ArrowLeftRight,
   Copy,
   Check,
@@ -15,29 +15,33 @@ import { IconButton } from '@/components/ui/IconButton';
 interface GameControlsProps {
   onNewGame: () => void;
   onUndo: () => void;
-  onRedo: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
   onFlipBoard: () => void;
   onCopyFEN: () => Promise<boolean>;
-  onImportFEN: (fen: string) => boolean;
+  onImportFEN: (fen: string) => Promise<void>;
   onResign: () => void;
   canUndo: boolean;
-  canRedo: boolean;
+  canPrevious: boolean;
+  canNext: boolean;
   isGameOver: boolean;
-  isThinking: boolean;
+  busy: boolean;
 }
 
 export function GameControls({
   onNewGame,
   onUndo,
-  onRedo,
+  onPrevious,
+  onNext,
   onFlipBoard,
   onCopyFEN,
   onImportFEN,
   onResign,
   canUndo,
-  canRedo,
+  canPrevious,
+  canNext,
   isGameOver,
-  isThinking,
+  busy,
 }: GameControlsProps) {
   const [copied, setCopied] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
@@ -53,17 +57,17 @@ export function GameControls({
     }
   };
 
-  const handleImportSubmit = (e: React.FormEvent) => {
+  const handleImportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fenInput.trim()) return;
 
-    const ok = onImportFEN(fenInput.trim());
-    if (ok) {
+    try {
+      await onImportFEN(fenInput.trim());
       setShowImportModal(false);
       setFenInput('');
       setImportError(null);
-    } else {
-      setImportError('Invalid FEN format or illegal board position');
+    } catch (error) {
+      setImportError((error as Error).message);
     }
   };
 
@@ -74,20 +78,20 @@ export function GameControls({
         <div className="flex items-center gap-1">
           <IconButton
             size="md"
-            label="Undo move"
-            onClick={onUndo}
-            disabled={!canUndo || isThinking}
+            label="Previous position"
+            onClick={onPrevious}
+            disabled={!canPrevious}
           >
-            <RotateCcw className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" />
           </IconButton>
 
           <IconButton
             size="md"
-            label="Redo move"
-            onClick={onRedo}
-            disabled={!canRedo || isThinking}
+            label="Next position"
+            onClick={onNext}
+            disabled={!canNext}
           >
-            <RotateCw className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" />
           </IconButton>
 
           <IconButton
@@ -116,7 +120,7 @@ export function GameControls({
             size="md"
             label="Import position from FEN"
             onClick={() => setShowImportModal(true)}
-            disabled={isThinking}
+            disabled={busy}
           >
             <FileUp className="w-4 h-4" />
           </IconButton>
@@ -127,7 +131,7 @@ export function GameControls({
               variant="danger"
               label="Resign game"
               onClick={() => setShowResignConfirm(true)}
-              disabled={isGameOver || isThinking}
+              disabled={isGameOver || busy}
             >
               <Flag className="w-4 h-4" />
             </IconButton>
@@ -155,16 +159,26 @@ export function GameControls({
         </div>
       </div>
 
-      {/* Start new game button */}
-      <Button
-        variant="primary"
-        size="md"
-        className="w-full mt-1"
-        icon={<PlusCircle className="w-4 h-4" />}
-        onClick={onNewGame}
-      >
-        New Game
-      </Button>
+      <div className="flex gap-2 mt-1">
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={onUndo}
+          disabled={!canUndo || busy}
+        >
+          Undo move
+        </Button>
+        <Button
+          variant="primary"
+          size="md"
+          className="flex-1"
+          icon={<PlusCircle className="w-4 h-4" />}
+          onClick={onNewGame}
+          disabled={busy}
+        >
+          New Game
+        </Button>
+      </div>
 
       {/* Import FEN Modal */}
       {showImportModal && (
@@ -191,7 +205,7 @@ export function GameControls({
               />
 
               {importError && (
-                <span className="text-xs text-[#f85149] font-mono">
+                <span role="alert" className="text-xs text-[#f85149] font-mono">
                   {importError}
                 </span>
               )}
@@ -208,7 +222,7 @@ export function GameControls({
                 >
                   Cancel
                 </Button>
-                <Button type="submit" variant="primary" size="md">
+                <Button type="submit" variant="primary" size="md" disabled={busy}>
                   Load Board
                 </Button>
               </div>

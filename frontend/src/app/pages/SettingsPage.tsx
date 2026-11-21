@@ -13,7 +13,7 @@ const BOARD_THEMES: { id: BoardTheme; name: string; light: string; dark: string 
   { id: 'slate', name: 'Atelier Slate', light: '#cad2c5', dark: '#445b41' },
 ];
 
-export function SettingsPage() {
+export function SettingsPage({ onTestMoveSounds, soundError }: { onTestMoveSounds: () => void; soundError: string | null }) {
   const { settings, updateSetting, resetSettings } = useSettings();
 
   return (
@@ -136,7 +136,7 @@ export function SettingsPage() {
         {/* Section 2: Motion & Interaction */}
         <div>
           <h2 className="text-xs font-mono font-semibold tracking-wider uppercase text-[var(--color-accent-bright)] mb-4">
-            Motion & Animation
+            Motion & Sound
           </h2>
 
           <div className="space-y-4">
@@ -169,6 +169,31 @@ export function SettingsPage() {
                 onChange={(checked) => updateSetting('reducedMotion', checked)}
               />
             </div>
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <label htmlFor="move-sounds" className="block text-sm font-medium text-[var(--color-text-primary)]">
+                  Move Sounds
+                </label>
+                <span className="text-xs text-[var(--color-text-secondary)]">
+                  Play a sound when either side moves or captures a piece.
+                </span>
+              </div>
+              <Switch
+                id="move-sounds"
+                label="Move Sounds"
+                checked={settings.soundEnabled}
+                onChange={(checked) => {
+                  if (checked) onTestMoveSounds();
+                  updateSetting('soundEnabled', checked);
+                }}
+              />
+            </div>
+            {settings.soundEnabled && (
+              <div className="flex flex-col items-start gap-2">
+                <Button size="sm" onClick={onTestMoveSounds}>Test sound</Button>
+                {soundError && <p role="alert" className="text-xs text-[#f85149]">{soundError}</p>}
+              </div>
+            )}
           </div>
         </div>
 

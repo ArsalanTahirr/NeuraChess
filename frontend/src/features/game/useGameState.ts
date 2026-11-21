@@ -1,361 +1,270 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { Chess, type Square } from 'chess.js';
-import type { GameState, MoveRecord, GameOutcome, PlayerColor, CapturedPieces } from '@/types/chess';
-import type { EngineAdapter } from '@/api/adapter';
-import {
-  getCapturedPieces,
-  classifyGameOutcome,
-  findKingSquare,
-  parseUciMove,
-} from '@/lib/chessUtils';
-import { useEngine } from '@/features/engine/useEngine';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { Chess, DEFAULT_POSITION, type Square } from 'chess.js';
+import { ApiError, backend } from '@/api/backendAdapter';
+import type { GameOptions, GameState, PlayerColor } from '@/types/chess';
+import type { ConnectionStatus } from '@/types/engine';
+import { findKingSquare, getCapturedPieces, calculateMaterialAdvantage, parseUciMove } from '@/lib/chessUtils';
+import { readSavedValue, saveValue } from '@/lib/browserStorage';
 
-export function useGameState(adapter: EngineAdapter, playerColor: PlayerColor) {
-  // Underlying chess.js instance (mutable ref to avoid recreating object)
-  const chessRef = useRef<Chess>(new Chess());
-  const gameIdRef = useRef<number>(1);
+const GAME_STORAGE_KEY = 'neurachess_active_game';
+const ORIENTATION_STORAGE_KEY = 'neurachess_board_orientation';
 
-  // Synchronized react state
-  const [fen, setFen] = useState<string>(() => chessRef.current.fen());
-  const [pgn, setPgn] = useState<string>('');
-  const [moveHistory, setMoveHistory] = useState<MoveRecord[]>([]);
-  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(-1);
-  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
-  const [capturedPieces, setCapturedPieces] = useState<CapturedPieces>({ white: [], black: [] });
-  const [outcome, setOutcome] = useState<GameOutcome | null>(null);
-  const [isBoardFlipped, setIsBoardFlipped] = useState<boolean>(playerColor === 'black');
+function isPlayerTurn(game: GameState): boolean {
+  return game.turn === (game.settings.playerColor === 'white' ? 'w' : 'b');
+}
 
-  // Engine hook
-  const { capabilities, status, lastResponse, requestMove, abort } = useEngine(adapter);
-
-  // Sync board flipping if playerColor changes
-  useEffect(() => {
-    setIsBoardFlipped(playerColor === 'black');
-  }, [playerColor]);
-
-  // Derived state
-  const isLiveGame = currentMoveIndex === moveHistory.length - 1;
-  const chess = chessRef.current;
-  const turn = chess.turn();
-  const isCheck = chess.inCheck();
-  const isGameOver = outcome !== null || chess.isGameOver();
-  const kingSquare = isCheck ? findKingSquare(chess, turn) : null;
-
-  // Refresh view from the underlying chess position
-  const syncState = useCallback((moveRecord?: MoveRecord, targetIndex?: number) => {
-    const c = chessRef.current;
-    const currentFen = c.fen();
-    setFen(currentFen);
-    setPgn(c.pgn());
-    setCapturedPieces(getCapturedPieces(c));
-
-    const gameOutcome = classifyGameOutcome(c);
-    if (gameOutcome) {
-      setOutcome(gameOutcome);
-    }
-
-    if (moveRecord) {
-      setMoveHistory((prev) => {
-        const next = [...prev, moveRecord];
-        setCurrentMoveIndex(next.length - 1);
-        return next;
-      });
-    } else if (targetIndex !== undefined) {
-      setCurrentMoveIndex(targetIndex);
-    }
-  }, []);
-
-  // Trigger engine move if it's the engine's turn
-  const checkAndTriggerEngine = useCallback(
-    async (currentGameId: number) => {
-      const c = chessRef.current;
-      if (c.isGameOver()) return;
-
-      const engineColor = playerColor === 'white' ? 'b' : 'w';
-      if (c.turn() !== engineColor) return;
-
-      const currentFen = c.fen();
-      const response = await requestMove({ fen: currentFen });
-
-      // Guard against stale response due to newGame, undo, or FEN import
-      if (gameIdRef.current !== currentGameId) {
-        return;
-      }
-
-      if (!response || !response.move) return;
-
-      const { from, to, promotion } = parseUciMove(response.move);
-
-      try {
-        const moveResult = c.move({
-          from,
-          to,
-          promotion: promotion || 'q',
-        });
-
-        if (moveResult) {
-          setLastMove({ from: moveResult.from as Square, to: moveResult.to as Square });
-
-          const moveRecord: MoveRecord = {
-            san: moveResult.san,
-            uci: response.move,
-            fen: c.fen(),
-            moveNumber: Math.ceil(c.history().length / 2),
-            color: engineColor,
-            captured: moveResult.captured,
-            isCheck: c.inCheck(),
-            timeMs: response.time ?? undefined,
-          };
-
-          syncState(moveRecord);
-        }
-      } catch (err) {
-        console.error('Failed to apply engine move:', err);
-      }
-    },
-    [playerColor, requestMove, syncState]
-  );
-
-  // Human player makes a move
-  const makeMove = useCallback(
-    (from: Square, to: Square, promotion: string = 'q'): boolean => {
-      const c = chessRef.current;
-
-      // Cannot make moves during review mode or after game over
-      if (!isLiveGame && moveHistory.length > 0) return false;
-      if (c.isGameOver() || outcome !== null) return false;
-
-      // Enforce player's turn
-      const expectedColor = playerColor === 'white' ? 'w' : 'b';
-      if (c.turn() !== expectedColor) return false;
-
-      try {
-        const moveResult = c.move({
-          from,
-          to,
-          promotion,
-        });
-
-        if (!moveResult) return false;
-
-        setLastMove({ from, to });
-
-        const moveRecord: MoveRecord = {
-          san: moveResult.san,
-          uci: `${from}${to}${moveResult.promotion || ''}`,
-          fen: c.fen(),
-          moveNumber: Math.ceil(c.history().length / 2),
-          color: expectedColor,
-          captured: moveResult.captured,
-          isCheck: c.inCheck(),
-        };
-
-        syncState(moveRecord);
-
-        // Schedule engine response
-        const currentGameId = gameIdRef.current;
-        setTimeout(() => {
-          checkAndTriggerEngine(currentGameId);
-        }, 80);
-
-        return true;
-      } catch {
-        return false;
-      }
-    },
-    [isLiveGame, moveHistory.length, outcome, playerColor, syncState, checkAndTriggerEngine]
-  );
-
-  // New game reset
-  const newGame = useCallback(() => {
-    gameIdRef.current += 1;
-    abort();
-
-    const fresh = new Chess();
-    chessRef.current = fresh;
-
-    setFen(fresh.fen());
-    setPgn('');
-    setMoveHistory([]);
-    setCurrentMoveIndex(-1);
-    setLastMove(null);
-    setCapturedPieces({ white: [], black: [] });
-    setOutcome(null);
-
-    // If player is Black, engine plays first move as White
-    if (playerColor === 'black') {
-      const currentGameId = gameIdRef.current;
-      setTimeout(() => {
-        checkAndTriggerEngine(currentGameId);
-      }, 300);
-    }
-  }, [abort, playerColor, checkAndTriggerEngine]);
-
-  // Undo move (human + engine move = 2 plies, or 1 ply if only human moved)
-  const undoMove = useCallback(() => {
-    gameIdRef.current += 1;
-    abort();
-
-    const c = chessRef.current;
-    if (moveHistory.length === 0) return;
-
-    // Check how many moves to undo:
-    // If it's human's turn now, engine must have moved last, so undo 2 plies.
-    // If it's engine's turn, human just moved, so undo 1 ply.
-    const expectedColor = playerColor === 'white' ? 'w' : 'b';
-    const pliesToUndo = c.turn() === expectedColor && moveHistory.length >= 2 ? 2 : 1;
-
-    for (let i = 0; i < pliesToUndo; i++) {
-      c.undo();
-    }
-
-    const nextHistory = moveHistory.slice(0, moveHistory.length - pliesToUndo);
-    setMoveHistory(nextHistory);
-    setCurrentMoveIndex(nextHistory.length - 1);
-    setFen(c.fen());
-    setPgn(c.pgn());
-    setCapturedPieces(getCapturedPieces(c));
-    setOutcome(null);
-
-    if (nextHistory.length > 0) {
-      const last = nextHistory[nextHistory.length - 1];
-      const { from, to } = parseUciMove(last.uci);
-      setLastMove({ from, to });
-    } else {
-      setLastMove(null);
-    }
-  }, [abort, moveHistory, playerColor]);
-
-  // Redo move
-  const redoMove = useCallback(() => {
-    // Redo is active when user navigates history
-    if (currentMoveIndex < moveHistory.length - 1) {
-      const nextIdx = currentMoveIndex + 1;
-      const targetMove = moveHistory[nextIdx];
-      navigateTo(nextIdx);
-    }
-  }, [currentMoveIndex, moveHistory]);
-
-  // History navigation
-  const navigateTo = useCallback(
-    (index: number) => {
-      if (index < -1 || index >= moveHistory.length) return;
-
-      setCurrentMoveIndex(index);
-
-      if (index === -1) {
-        // Start position
-        const start = new Chess();
-        setFen(start.fen());
-        setLastMove(null);
-      } else {
-        const target = moveHistory[index];
-        setFen(target.fen);
-        const { from, to } = parseUciMove(target.uci);
-        setLastMove({ from, to });
-      }
-    },
-    [moveHistory]
-  );
-
-  // Return to live game
-  const returnToLive = useCallback(() => {
-    if (moveHistory.length === 0) {
-      navigateTo(-1);
-    } else {
-      navigateTo(moveHistory.length - 1);
-      setFen(chessRef.current.fen());
-    }
-  }, [moveHistory, navigateTo]);
-
-  // Resignation
-  const resign = useCallback(() => {
-    if (isGameOver) return;
-    const winner = playerColor === 'white' ? 'black' : 'white';
-    setOutcome({
-      result: winner,
-      reason: 'resignation',
-      winner,
-    });
-  }, [isGameOver, playerColor]);
-
-  // Flip board
-  const flipBoard = useCallback(() => {
-    setIsBoardFlipped((prev) => !prev);
-  }, []);
-
-  // Copy FEN
-  const copyFEN = useCallback(async (): Promise<boolean> => {
+async function replacePosition(previous: GameState | null, settings: GameOptions, fen?: string) {
+  if (previous) {
     try {
-      await navigator.clipboard.writeText(fen);
-      return true;
-    } catch {
-      return false;
+      return await backend.reset(previous, settings, fen);
+    } catch (cause) {
+      if (!(cause instanceof ApiError) || cause.code !== 'game_not_found') throw cause;
     }
-  }, [fen]);
+  }
+  return backend.createGame(settings, fen);
+}
 
-  // Import FEN
-  const importFEN = useCallback(
-    (newFen: string): boolean => {
+async function resumeEngineTurn(game: GameState, signal: AbortSignal): Promise<GameState> {
+  try {
+    return await backend.engineMove(game, signal);
+  } catch (cause) {
+    if (!(cause instanceof ApiError) || cause.code !== 'search_in_progress') throw cause;
+  }
+
+  // A refresh can leave the previous page's search running on the server.
+  const deadline = Date.now() + game.settings.timeLimitMs + 1500;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    signal.throwIfAborted();
+    const latest = await backend.getGame(game.id, signal);
+    if (latest.revision !== game.revision) return latest;
+  }
+  return backend.engineMove(game, signal);
+}
+
+export function useGameState(
+  defaultPlayerColor: PlayerColor,
+  connection: ConnectionStatus,
+  playSound: (capture: boolean) => Promise<void>,
+) {
+  const [savedGameId, setSavedGameId] = useState(() => readSavedValue(GAME_STORAGE_KEY));
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [game, setGame] = useState<GameState | null>(null);
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
+  const [orientation, setOrientation] = useState(defaultPlayerColor);
+  const [busy, setBusy] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = useRef<GameState | null>(null);
+  const mutating = useRef(false);
+  const search = useRef<AbortController | null>(null);
+
+  const applySnapshot = useCallback((next: GameState) => {
+    const previous = current.current;
+    if (previous?.id === next.id && previous.revision >= next.revision) return;
+    if (previous?.id === next.id && next.moveHistory.length === previous.moveHistory.length + 1) {
+      void playSound(Boolean(next.moveHistory[next.moveHistory.length - 1].captured));
+    }
+    search.current?.abort();
+    search.current = null;
+    current.current = next;
+    saveValue(GAME_STORAGE_KEY, next.id);
+    setThinking(false);
+    setGame(next);
+  }, [playSound]);
+
+  const recover = useCallback(async (cause: unknown, previous: GameState | null) => {
+    if (!(cause instanceof ApiError) || !previous || current.current !== previous) return;
+    if (cause.code === 'game_not_found') {
+      search.current?.abort();
+      search.current = null;
+      current.current = null;
+      saveValue(GAME_STORAGE_KEY, null);
+      saveValue(ORIENTATION_STORAGE_KEY, null);
+      setGame(null);
+      setReviewIndex(null);
+      setThinking(false);
+    }
+    if (['stale_game', 'request_timeout', 'offline'].includes(cause.code)) {
+      const latest = await backend.getGame(previous.id).catch(() => null);
+      if (latest && current.current === previous) applySnapshot(latest);
+    }
+  }, [applySnapshot]);
+
+  const mutate = useCallback(async (
+    action: (previous: GameState | null) => Promise<GameState>,
+    reportError = true,
+  ) => {
+    if (mutating.current) throw new Error('A game update is already in progress.');
+    mutating.current = true;
+    setBusy(true);
+    if (reportError) setError(null);
+    const previous = current.current;
+    try {
+      const next = await action(previous);
+      applySnapshot(next);
+      setReviewIndex(null);
+      setError(null);
+    } catch (cause) {
+      await recover(cause, previous);
+      if (reportError) setError((cause as Error).message);
+      throw cause;
+    } finally {
+      mutating.current = false;
+      setBusy(false);
+    }
+  }, [applySnapshot, recover]);
+
+  const newGame = useCallback(async (settings: GameOptions) => {
+    await mutate((previous) => replacePosition(previous, settings));
+    setSavedGameId(null);
+    setRestoreError(null);
+    setOrientation(settings.playerColor);
+    saveValue(ORIENTATION_STORAGE_KEY, settings.playerColor);
+  }, [mutate]);
+
+  useEffect(() => {
+    if (!savedGameId || connection !== 'connected') return;
+    const controller = new AbortController();
+    setRestoreError(null);
+
+    const restore = async () => {
       try {
-        const c = new Chess(newFen.trim());
-        gameIdRef.current += 1;
-        abort();
-
-        chessRef.current = c;
-        setFen(c.fen());
-        setPgn(c.pgn());
-        setMoveHistory([]);
-        setCurrentMoveIndex(-1);
-        setLastMove(null);
-        setCapturedPieces(getCapturedPieces(c));
-        setOutcome(classifyGameOutcome(c));
-
-        // If turn belongs to engine, trigger calculation
-        const engineColor = playerColor === 'white' ? 'b' : 'w';
-        if (c.turn() === engineColor && !c.isGameOver()) {
-          const currentGameId = gameIdRef.current;
-          setTimeout(() => {
-            checkAndTriggerEngine(currentGameId);
-          }, 200);
+        const snapshot = await backend.getGame(savedGameId, controller.signal);
+        if (controller.signal.aborted) return;
+        const savedOrientation = readSavedValue(ORIENTATION_STORAGE_KEY);
+        setOrientation(savedOrientation === 'white' || savedOrientation === 'black'
+          ? savedOrientation : snapshot.settings.playerColor);
+        applySnapshot(snapshot);
+        setSavedGameId(null);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        if (cause instanceof ApiError && cause.code === 'game_not_found') {
+          saveValue(GAME_STORAGE_KEY, null);
+          saveValue(ORIENTATION_STORAGE_KEY, null);
+          setSavedGameId(null);
+          setError('The saved match expired. Start a new match to continue.');
+        } else {
+          setRestoreError((cause as Error).message);
         }
+      }
+    };
 
+    void restore();
+    return () => controller.abort();
+  }, [savedGameId, connection, restoreAttempt, applySnapshot]);
+
+  const requestEngineMove = useCallback(async () => {
+    const previous = current.current;
+    if (!previous || previous.outcome || isPlayerTurn(previous) || search.current) return;
+    const controller = new AbortController();
+    search.current = controller;
+    setThinking(true);
+    setError(null);
+    try {
+      const next = await resumeEngineTurn(previous, controller.signal);
+      if (current.current === previous && !controller.signal.aborted) applySnapshot(next);
+    } catch (cause) {
+      if (controller.signal.aborted || current.current !== previous) return;
+      if (mutating.current && cause instanceof ApiError && cause.code === 'stale_game') return;
+      await recover(cause, previous);
+      if (current.current === previous || !current.current) setError((cause as Error).message);
+    } finally {
+      if (search.current === controller) {
+        search.current = null;
+        setThinking(false);
+      }
+    }
+  }, [applySnapshot, recover]);
+
+  useEffect(() => {
+    void requestEngineMove();
+  }, [game, requestEngineMove]);
+
+  const moveHistory = game?.moveHistory ?? [];
+  const latestIndex = moveHistory.length - 1;
+  const currentMoveIndex = Math.min(reviewIndex ?? latestIndex, latestIndex);
+  const isLiveGame = currentMoveIndex === latestIndex;
+  const viewedMove = moveHistory[currentMoveIndex];
+  const fen = (isLiveGame ? game?.fen : viewedMove?.fen ?? game?.initialFen) ?? DEFAULT_POSITION;
+  const board = useMemo(() => new Chess(fen), [fen]);
+  const turn = isLiveGame && game ? game.turn : board.turn();
+  const isCheck = isLiveGame && game ? game.isCheck : board.inCheck();
+  const playerColor = game?.settings.playerColor ?? defaultPlayerColor;
+  const canUndo = Boolean(
+    game?.outcome?.reason === 'resignation' ||
+    moveHistory.some((move) => move.color === (playerColor === 'white' ? 'w' : 'b')),
+  );
+
+  const makeMove = (from: Square, to: Square, promotion: string = 'q'): false | 'pending' => {
+    const previous = current.current;
+    if (!previous || previous.outcome || !isPlayerTurn(previous) || mutating.current || !isLiveGame) return false;
+    const move = board.moves({ square: from, verbose: true }).find(
+      (candidate) => candidate.to === to && (!candidate.promotion || candidate.promotion === promotion),
+    );
+    if (!move) return false;
+    void mutate(() => backend.playMove(previous, move.lan)).catch(() => {});
+    return 'pending';
+  };
+
+  const importFEN = async (position: string) => {
+    const previous = current.current;
+    if (!previous) throw new Error('Start a match before importing a position.');
+    await mutate(
+      () => replacePosition(previous, previous.settings, position),
+      false,
+    );
+  };
+
+  const actions = {
+    makeMove,
+    newGame,
+    importFEN,
+    undoMove: () => {
+      const previous = current.current;
+      if (previous) void mutate(() => backend.undo(previous)).catch(() => {});
+    },
+    resign: () => {
+      const previous = current.current;
+      if (previous) void mutate(() => backend.resign(previous)).catch(() => {});
+    },
+    retryEngine: requestEngineMove,
+    retryRestore: () => setRestoreAttempt((attempt) => attempt + 1),
+    flipBoard: () => {
+      const next = orientation === 'white' ? 'black' : 'white';
+      setOrientation(next);
+      if (current.current) saveValue(ORIENTATION_STORAGE_KEY, next);
+    },
+    navigateTo: (index: number) => setReviewIndex(index === latestIndex ? null : index),
+    returnToLive: () => setReviewIndex(null),
+    copyFEN: async () => {
+      try {
+        await navigator.clipboard.writeText(fen);
         return true;
       } catch {
         return false;
       }
     },
-    [abort, playerColor, checkAndTriggerEngine]
-  );
+  };
 
   return {
-    fen,
-    pgn,
-    turn,
-    isCheck,
-    isGameOver,
-    kingSquare,
-    outcome,
-    moveHistory,
-    currentMoveIndex,
-    lastMove,
-    capturedPieces,
-    isBoardFlipped,
-    isLiveGame,
-    engineStatus: status,
-    engineCapabilities: capabilities,
-    lastEngineResponse: lastResponse,
-    actions: {
-      makeMove,
-      undoMove,
-      redoMove,
-      navigateTo,
-      returnToLive,
-      newGame,
-      resign,
-      flipBoard,
-      copyFEN,
-      importFEN,
-    },
+    fen, turn, isCheck, playerColor, orientation, moveHistory, currentMoveIndex, isLiveGame,
+    outcome: game?.outcome ?? null,
+    isGameOver: Boolean(game?.outcome),
+    kingSquare: isCheck ? findKingSquare(board, turn) : null,
+    lastMove: viewedMove ? parseUciMove(viewedMove.uci) : null,
+    capturedPieces: getCapturedPieces(moveHistory.slice(0, currentMoveIndex + 1)),
+    materialAdvantage: calculateMaterialAdvantage(board),
+    lastSearch: isLiveGame ? game?.lastSearch ?? null : null,
+    evaluationMode: game?.settings.evaluationMode ?? null,
+    busy, thinking, error,
+    hasGame: game !== null,
+    pendingRestore: savedGameId !== null,
+    restoreError,
+    canMove: Boolean(game && isPlayerTurn(game)) && !busy && !thinking,
+    canUndo: canUndo && isLiveGame && !busy,
+    canRetry: Boolean(game && !game.outcome && !isPlayerTurn(game) && error && !busy && !thinking),
+    actions,
   };
 }

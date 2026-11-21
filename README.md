@@ -1,5 +1,53 @@
 # NeuraChess
 
+## Run NeuraChess locally
+
+From the repository root, install the locked Python dependencies and start the backend.
+
+```sh
+uv sync --locked
+uv run --locked uvicorn neurachess.api.app:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, install and start the React frontend.
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. The Play page asks you to choose a side, calculation depth and evaluator before starting a match. A browser refresh resumes the saved match while the backend is still running. Set the time budget in **Settings** before starting a match. The **Analysis** page analyzes the board and FEN independently of the current match.
+
+Neural mode uses the original MLP when `checkpoints/model_v001.pt` is installed and the included NNUE checkpoint on a fresh checkout. To select NNUE explicitly, start the backend from the repository root with the following command, then choose **Neural** in Play or Analysis.
+
+```sh
+NEURACHESS_CHECKPOINT=checkpoints/nnue_v001.pt uv run --locked uvicorn neurachess.api.app:app --host 127.0.0.1 --port 8000
+```
+
+Use one Uvicorn worker. Game sessions live in memory and are cleared on restart. When deploying the frontend and backend on different origins, set the frontend's `VITE_API_URL` and the backend's comma-separated `NEURACHESS_CORS_ORIGINS`. The default CORS origins allow localhost and 127.0.0.1 on Vite's dev (5173) and preview (4173) ports.
+
+See the [API contract](frontend/API_CONTRACT.md) and [frontend verification commands](frontend/README.md#verification).
+
+Run the Python suite with `uv run --locked pytest` and lint with `uv run --locked ruff check .`. The real-checkpoint API tests exercise Play and Analysis for each installed model.
+
+## Train the NNUE evaluator
+
+Each king's region selects one of six groups of piece-square weights. The two perspectives share weights and each produces 256 values. A 32-unit hidden layer reads both perspectives and predicts a correction to the material score. The API converts the result to White-relative centipawns. Each search keeps its own integer accumulators and updates only the changed features between evaluations. Crossing a king-region boundary refreshes that perspective.
+
+After building the dataset below, run these commands from the repository root. The first one creates the input arrays and can be skipped when `data/encoded/X.npy` and `y.npy` already exist.
+
+```sh
+uv run --locked python scripts/preprocess_dataset.py
+uv run --locked python scripts/train_nnue.py --output checkpoints/nnue_v002.pt
+```
+
+The trainer uses the original model's seeded 80/10/10 position split. It optimizes error on sigmoid-scaled Stockfish scores plus a small Huber term in pawn units, saves the epoch with the lowest validation loss, and reports error on the held-out test set. The source contains position evaluations without game IDs, so nearby positions can occur in different splits.
+
+To compare playing strength locally, run `uv run --locked python benchmarks/nnue_match.py`. It plays both colors from the Italian and Queen's Gambit openings against `model_v001.pt` with the app's depth-4, 1.2-second limits. Use `--candidate` or `--baseline` to compare other checkpoints.
+
+The bundled NNUE checkpoint comes from epoch 5 of an eight-epoch CPU run on 800,000 positions. On the same 100,000 held-out positions, its mean absolute error was 227.4 centipawns and the original MLP's was 189.3. NNUE won all four games in the paired opening test. Its average completed depth ranged from 3.32 to 3.37 plies per game, compared with 2.54 to 2.63 for the MLP. Four games are too few to estimate Elo.
+
 ## Build the evaluation dataset
 
 Run this from the repository root on Linux or macOS.

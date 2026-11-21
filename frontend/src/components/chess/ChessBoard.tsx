@@ -6,8 +6,9 @@ import { PromotionDialog } from './PromotionDialog';
 
 interface ChessBoardProps {
   position: string; // FEN
+  analysisArrows?: [Square, Square, string?][];
   orientation: 'white' | 'black';
-  onMove: (from: Square, to: Square, promotion?: string) => boolean;
+  onMove: (from: Square, to: Square, promotion?: string) => boolean | 'pending';
   lastMove: { from: Square; to: Square } | null;
   isCheck: boolean;
   kingSquare: Square | null;
@@ -31,6 +32,7 @@ const BOARD_THEMES: Record<BoardTheme, { light: string; dark: string }> = {
 
 export function ChessBoard({
   position,
+  analysisArrows,
   orientation,
   onMove,
   lastMove,
@@ -55,15 +57,21 @@ export function ChessBoard({
     color: 'w' | 'b';
   } | null>(null);
 
+  useEffect(() => {
+    setSelectedSquare(null);
+    setPendingPromotion(null);
+  }, [position, isLiveGame]);
+
   // Responsive board width calculation
   useEffect(() => {
     const updateSize = () => {
       if (!containerRef.current) return;
-      const { clientWidth, clientHeight } = containerRef.current;
-      // Maintain 1:1 aspect ratio bounded by container width and available vertical height
-      const availableHeight = clientHeight > 100 ? clientHeight : window.innerHeight - 200;
-      const size = Math.min(clientWidth, availableHeight, 620);
-      setBoardWidth(Math.max(280, Math.floor(size)));
+      const container = containerRef.current;
+      const { paddingLeft, paddingRight } = window.getComputedStyle(container);
+      const contentWidth = container.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight);
+      // Leave room for the header, player rows, and padding around the board.
+      const size = Math.min(contentWidth, Math.max(280, window.innerHeight - 208), 620);
+      if (size > 0) setBoardWidth(Math.floor(size));
     };
 
     updateSize();
@@ -148,51 +156,33 @@ export function ChessBoard({
     return styles;
   }, [showLastMove, lastMove, selectedSquare, showLegalMoves, legalMoveSquares, isCheck, kingSquare, position]);
 
-  // Check if a move is a pawn promotion
-  const isPromotionMove = useCallback(
-    (from: Square, to: Square): boolean => {
-      try {
-        const chess = new Chess(position);
-        const piece = chess.get(from);
-        if (!piece || piece.type !== 'p') return false;
+  const queuePromotion = useCallback((chess: Chess, from: Square, to: Square) => {
+    const piece = chess.get(from);
+    if (piece?.type !== 'p' || to[1] !== (piece.color === 'w' ? '8' : '1')) return false;
+    if (!chess.moves({ square: from, verbose: true }).some((move) => move.to === to && move.promotion)) {
+      return false;
+    }
 
-        const isWhitePromotion = piece.color === 'w' && from[1] === '7' && to[1] === '8';
-        const isBlackPromotion = piece.color === 'b' && from[1] === '2' && to[1] === '1';
-        return isWhitePromotion || isBlackPromotion;
-      } catch {
-        return false;
-      }
-    },
-    [position]
-  );
+    setPendingPromotion({ from, to, color: piece.color });
+    return true;
+  }, []);
 
   // Handle piece drop (drag and drop)
   const onPieceDrop = useCallback(
     (sourceSquare: Square, targetSquare: Square): boolean => {
       if (!isLiveGame || isGameOver || isThinking) return false;
 
-      // Promotion move
-      if (isPromotionMove(sourceSquare, targetSquare)) {
-        const chess = new Chess(position);
-        const piece = chess.get(sourceSquare);
-        if (piece) {
-          setPendingPromotion({
-            from: sourceSquare,
-            to: targetSquare,
-            color: piece.color,
-          });
-          return true;
-        }
-      }
+      if (queuePromotion(new Chess(position), sourceSquare, targetSquare)) return false;
 
       // Standard move
       const success = onMove(sourceSquare, targetSquare, 'q');
       if (success) {
         setSelectedSquare(null);
       }
-      return success;
+      // Server-backed moves are animated when the confirmed FEN arrives.
+      return success === true;
     },
-    [isLiveGame, isGameOver, isThinking, isPromotionMove, position, onMove]
+    [isLiveGame, isGameOver, isThinking, queuePromotion, position, onMove]
   );
 
   // Handle click-to-move and square selection
@@ -212,17 +202,7 @@ export function ChessBoard({
 
       // 2. If a piece is already selected and target is a legal move
       if (selectedSquare) {
-        if (isPromotionMove(selectedSquare, square)) {
-          const selectedPiece = chess.get(selectedSquare);
-          if (selectedPiece) {
-            setPendingPromotion({
-              from: selectedSquare,
-              to: square,
-              color: selectedPiece.color,
-            });
-            return;
-          }
-        }
+        if (queuePromotion(chess, selectedSquare, square)) return;
 
         const success = onMove(selectedSquare, square, 'q');
         setSelectedSquare(null);
@@ -232,7 +212,7 @@ export function ChessBoard({
       // Clicked on empty square or opponent piece when nothing selected
       setSelectedSquare(null);
     },
-    [isLiveGame, isGameOver, isThinking, position, playerColor, selectedSquare, isPromotionMove, onMove]
+    [isLiveGame, isGameOver, isThinking, position, playerColor, selectedSquare, queuePromotion, onMove]
   );
 
   // Confirm promotion piece
@@ -265,9 +245,12 @@ export function ChessBoard({
       >
         <Chessboard
           position={position}
+          customArrows={analysisArrows}
           boardOrientation={orientation}
           boardWidth={boardWidth}
           onPieceDrop={onPieceDrop}
+          // Forward promotion drops to onPieceDrop, which waits for our chooser.
+          autoPromoteToQueen
           onSquareClick={onSquareClick}
           customSquareStyles={customSquareStyles}
           customDarkSquareStyle={{ backgroundColor: themeColors.dark }}
@@ -279,17 +262,14 @@ export function ChessBoard({
             borderRadius: '3px',
           }}
         />
-
-        {/* Promotion Dialog Overlay */}
-        {pendingPromotion && (
-          <PromotionDialog
-            color={pendingPromotion.color}
-            square={pendingPromotion.to}
-            onSelect={handlePromotionSelect}
-            onCancel={() => setPendingPromotion(null)}
-          />
-        )}
       </div>
+      {pendingPromotion && (
+        <PromotionDialog
+          color={pendingPromotion.color}
+          onSelect={handlePromotionSelect}
+          onCancel={() => setPendingPromotion(null)}
+        />
+      )}
     </div>
   );
 }

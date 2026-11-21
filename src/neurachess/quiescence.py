@@ -4,6 +4,7 @@ import chess
 
 from neurachess.evaluation import MATE_SCORE, classical_evaluate
 from neurachess.move_ordering import score_move
+from neurachess.rules import game_outcome
 from neurachess.search_utils import check_timeout
 
 
@@ -20,10 +21,9 @@ def quiescence(
 
     color = 1 if board.turn == chess.WHITE else -1
 
-    if board.is_checkmate():
-        return -MATE_SCORE + ply
-    if board.is_game_over():
-        return 0
+    outcome = game_outcome(board)
+    if outcome is not None:
+        return -MATE_SCORE + ply if outcome.winner is not None else 0
 
     if not board.is_check():
         stand_pat = color * evaluator(board)

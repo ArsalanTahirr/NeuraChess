@@ -10,7 +10,7 @@ NeuraChess treats chess as a focused analytical laboratory where classical strat
 - **Atmospheric Palette:** Warm midnight charcoal (`#0e0d0b`), layered stone graphite, and restrained copper/amber accents (`#b87333`).
 - **Typographic Precision:** Cormorant Garamond display serif for brand authority, DM Sans for interface clarity, and JetBrains Mono for exact numerical coordinates and metrics.
 - **Micro-Engineered Motion:** Signature 5-node branching search tree thinking indicator, physical spring evaluation transitions, and smooth piece interpolation.
-- **Architectural Integrity:** Complete separation between chess rules (`chess.js`), view rendering (`react-chessboard`), and engine communication adapters (`DemoAdapter` vs `BackendAdapter`).
+- **Architectural Integrity:** FastAPI owns the match rules, positions and move history. The board uses `chess.js` for previews and `react-chessboard` for rendering.
 
 ---
 
@@ -43,7 +43,7 @@ frontend/
 │   │   │   ├── GameSetupModal.tsx      # Color choice & depth configuration
 │   │   │   └── GameOverOverlay.tsx     # Game termination presentation
 │   │   ├── analysis/
-│   │   │   ├── AnalysisPanel.tsx       # Analytical metrics & PV visualization
+│   │   │   ├── AnalysisPanel.tsx       # Search results and best move
 │   │   │   ├── FenInput.tsx            # Validated FEN entry & clipboard copy
 │   │   │   └── PositionPresets.tsx     # Notable curated chess positions
 │   │   ├── layout/
@@ -58,17 +58,12 @@ frontend/
 │   │       └── Separator.tsx           # Fine architectural dividers
 │   ├── features/
 │   │   ├── game/
-│   │   │   └── useGameState.ts         # Central chess logic & race-condition safety
-│   │   ├── engine/
-│   │   │   └── useEngine.ts            # Adapter lifecycle & asynchronous moves
+│   │   │   └── useGameState.ts         # Server snapshots, move requests and history review
 │   │   └── settings/
 │   │       ├── useSettings.ts          # LocalStorage persistence hook
 │   │       └── settingsContext.tsx     # Global settings provider
 │   ├── api/
-│   │   ├── adapter.ts                  # EngineAdapter interface definition
-│   │   ├── demoAdapter.ts              # Local legal move generator (offline demo)
-│   │   ├── backendAdapter.ts           # Future FastAPI HTTP client
-│   │   └── index.ts                    # Dynamic adapter factory
+│   │   └── backendAdapter.ts           # FastAPI HTTP client
 │   ├── lib/
 │   │   └── chessUtils.ts               # Material valuation, SAN/UCI parsing, checks
 │   ├── styles/
@@ -77,7 +72,7 @@ frontend/
 │       ├── chess.ts                    # Full chess domain typings
 │       ├── engine.ts                   # Request/response models
 │       └── settings.ts                 # User preference schema
-├── API_CONTRACT.md                     # Proposed FastAPI endpoint specifications
+├── API_CONTRACT.md                     # FastAPI endpoint contract
 └── package.json
 ```
 
@@ -85,44 +80,29 @@ frontend/
 
 ## Getting Started
 
-### Prerequisites
+Start the [FastAPI backend](../README.md#run-neurachess-locally), then use Node.js 22 and npm from the frontend directory.
 
-- Node.js >= 20.0
-- npm >= 9.0
-
-### Installation
-
-```bash
-cd frontend
-npm install
-```
-
-### Running the Development Server
-
-```bash
+```sh
+npm ci
 npm run dev
 ```
 
-The application will start at `http://localhost:5173`. By default, it operates in **Demo Mode**, using the internal chess engine adapter to guarantee legal moves and instant interactivity without requiring the Python backend to be running.
+Open http://localhost:5173. The default API URL is `http://localhost:8000`. Set `VITE_API_URL` at development or build time to change it. The [API contract](API_CONTRACT.md) describes the requests and responses.
 
-### Connecting the FastAPI Backend (When Available)
+Choose a side and evaluation mode in the match setup dialog. Refreshing the browser restores your match and analysis position while the game server is running. Use **Settings** to set the search time budget for new games and analyses. To analyze a position, enter a FEN, select a preset, or move pieces on the Analysis board, then select **Analyze Position** to show the engine’s best-move arrow.
 
-Set the `VITE_ENGINE_MODE` and `VITE_API_URL` environment variables:
+## Verification
 
-```bash
-VITE_ENGINE_MODE=backend VITE_API_URL=http://localhost:8000 npm run dev
-```
-
-See [API_CONTRACT.md](./API_CONTRACT.md) for endpoint definitions.
-
----
-
-## Verification & Build
-
-### Type Checking & Build
-
-```bash
+```sh
+npm test
 npm run build
+npm run preview -- --host 127.0.0.1 --port 4173 --strictPort
 ```
 
-Creates an optimized production bundle in `dist/`.
+With FastAPI and the production preview running locally, run the browser gameplay checks from this directory.
+
+```sh
+node scripts/e2e_gameplay.cjs
+```
+
+The browser check uses Google Chrome or the executable specified by `CHROME_BIN`, the real API and the trained checkpoint. It defaults to `http://127.0.0.1:4173` and `http://127.0.0.1:8000`. Override those with `E2E_FRONTEND_URL` and `E2E_API_URL`. Set `E2E_SCREENSHOT_DIR` to save gameplay screenshots.

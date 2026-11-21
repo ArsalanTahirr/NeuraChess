@@ -3,7 +3,11 @@ import torch
 
 from neurachess.evaluation import MATE_SCORE
 from neurachess.neural.encoding import encode_board
+from neurachess.neural.mlp_inference import MLPAccumulator, MLPWeights
 from neurachess.neural.model import ChessEvaluator
+from neurachess.neural.nnue import ARCHITECTURE, KingBucketNNUE
+from neurachess.neural.nnue_inference import NNUEAccumulator, NNUEWeights
+from neurachess.rules import game_outcome
 
 
 class NeuralEvaluator:
@@ -14,6 +18,24 @@ class NeuralEvaluator:
             map_location="cpu",
         )
 
+        self.nnue_weights = None
+        self.architecture_source = "checkpoint"
+        if "architecture" in checkpoint:
+            if checkpoint["architecture"] != ARCHITECTURE:
+                raise ValueError(
+                    f"Unsupported neural architecture: {checkpoint['architecture']!r}"
+                )
+            self.model = KingBucketNNUE()
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            self.model.eval()
+            self.nnue_weights = NNUEWeights(self.model)
+            self.checkpoint_configuration = {
+                key: checkpoint[key]
+                for key in ("architecture", "epoch", "val_mae_cp", "val_loss")
+                if key in checkpoint
+            }
+            return
+
         required = {"input_size", "hidden_sizes", "model_state_dict"}
         missing = required - checkpoint.keys()
         if missing:
@@ -22,7 +44,6 @@ class NeuralEvaluator:
             )
 
         architecture = {"activation", "dropout", "use_layer_norm"}
-        self.architecture_source = "checkpoint"
         if (
             architecture.isdisjoint(checkpoint)
             and "val_mse" in checkpoint
@@ -78,16 +99,25 @@ class NeuralEvaluator:
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()
+        self.mlp_weights = MLPWeights(self.model)
+
+    def for_search(self):
+        """Give each search its own accumulators. Search adjudicates terminal boards."""
+        if self.nnue_weights is not None:
+            return NNUEAccumulator(self.nnue_weights)
+        return MLPAccumulator(self.mlp_weights)
 
     @torch.inference_mode()
     def evaluate(self, board):
-        result = board.outcome(claim_draw=True)
+        result = game_outcome(board)
         if result is not None:
             if result.winner is None:
                 return 0
 
             return MATE_SCORE if result.winner == chess.WHITE else -MATE_SCORE
 
+        if self.nnue_weights is not None:
+            return NNUEAccumulator(self.nnue_weights)(board)
         x = encode_board(board)
         prediction = self.model(x)
 

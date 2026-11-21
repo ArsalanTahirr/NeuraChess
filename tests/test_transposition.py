@@ -268,7 +268,7 @@ def test_iterative_deepening_reuses_one_table_per_search(monkeypatch):
     key = position_key(board)
     entry = TTEntry(1, 0, TTFlag.EXACT, None)
 
-    def best_move(current_board, depth, deadline, tt, evaluator):
+    def best_move(current_board, depth, deadline, tt, evaluator, preferred_move):
         assert current_board is board
         assert deadline == 101.0
         if depth == 1:

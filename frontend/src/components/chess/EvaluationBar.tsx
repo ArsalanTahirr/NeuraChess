@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
+import type { MateScore } from '@/types/engine';
+import { formatEvaluation } from '@/lib/chessUtils';
 
 interface EvaluationBarProps {
   score: number | null;      // centipawns from white's perspective
-  mateIn: number | null;     // positive = white wins, negative = black wins
+  mate: MateScore | null;
   orientation: 'white' | 'black';
   height?: number;
 }
@@ -23,29 +25,19 @@ function scoreToFraction(score: number): number {
   return 0.5 + 0.5 * tanh;
 }
 
-/** Format score label */
-function formatScore(score: number | null, mateIn: number | null): string {
-  if (mateIn !== null) {
-    return `M${Math.abs(mateIn)}`;
-  }
-  if (score === null) return '0.0';
-  const abs = Math.abs(score / 100);
-  return (score >= 0 ? '+' : '-') + abs.toFixed(1);
-}
-
 export const EvaluationBar: React.FC<EvaluationBarProps> = ({
   score,
-  mateIn,
+  mate,
   orientation,
   height = 400,
 }) => {
   const whiteFraction = useMemo(() => {
-    if (mateIn !== null) {
-      return mateIn > 0 ? 1 : 0;
+    if (mate !== null) {
+      return mate.winner === 'white' ? 1 : 0;
     }
     if (score === null) return 0.5;
     return scoreToFraction(score);
-  }, [score, mateIn]);
+  }, [score, mate]);
 
   // If orientation is 'black', flip: white is at top, black at bottom;
   // when orientation is 'white', white is at bottom
@@ -55,10 +47,11 @@ export const EvaluationBar: React.FC<EvaluationBarProps> = ({
   const whiteHeight = `${whiteFraction * 100}%`;
   const blackHeight = `${(1 - whiteFraction) * 100}%`;
 
-  const scoreLabel = formatScore(score, mateIn);
+  const evaluation = formatEvaluation(score, mate);
+  const scoreLabel = mate ? `M${mate.plies}` : evaluation;
 
   // Label goes on the winning side edge
-  const whiteAdvantage = mateIn !== null ? mateIn > 0 : (score ?? 0) >= 0;
+  const whiteAdvantage = mate !== null ? mate.winner === 'white' : (score ?? 0) >= 0;
   const labelOnTop = whiteIsBottom ? !whiteAdvantage : whiteAdvantage;
 
   const springTransition = prefersReducedMotion
@@ -72,11 +65,13 @@ export const EvaluationBar: React.FC<EvaluationBarProps> = ({
 
   return (
     <div
+      title={evaluation}
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: 4,
+        width: 36,
         height: height + 24,
       }}
     >

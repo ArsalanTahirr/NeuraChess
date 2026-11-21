@@ -14,7 +14,7 @@ export function AboutPage() {
           The Engineering of NeuraChess
         </h1>
         <p className="text-base sm:text-lg text-[var(--color-text-secondary)] max-w-2xl font-light leading-relaxed">
-          How classical alpha-beta tree search collaborates with a custom 773-input PyTorch neural network to evaluate chess positions with strategic depth.
+          How NeuraChess searches possible moves and scores the resulting positions.
         </p>
       </div>
 
@@ -30,7 +30,7 @@ export function AboutPage() {
         </div>
         <div className="space-y-4 text-[var(--color-text-secondary)] leading-relaxed text-sm sm:text-base">
           <p>
-            NeuraChess is structured as a dual-engine architecture. At the core, <code className="text-[var(--color-text-primary)] font-mono text-xs px-1.5 py-0.5 bg-[var(--color-surface-panel)] rounded">python-chess</code> provides precise rule validation, move generation, and bitboard primitives. Over this foundation, a high-performance search algorithm navigates candidate game trees while a specialized neural network provides leaf evaluation.
+            At the core, <code className="text-[var(--color-text-primary)] font-mono text-xs px-1.5 py-0.5 bg-[var(--color-surface-panel)] rounded">python-chess</code> provides rule validation, move generation, and bitboard primitives. The same search can evaluate positions using material values or a trained neural network.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-4">
             <div className="p-4 bg-[var(--color-surface-panel)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] flex flex-col gap-1.5">
@@ -46,7 +46,7 @@ export function AboutPage() {
             <div className="p-4 bg-[var(--color-surface-panel)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] flex flex-col gap-1.5">
               <span className="font-mono text-xs text-[var(--color-accent-bright)] uppercase">Layer III</span>
               <strong className="text-[var(--color-text-primary)] text-sm">Neural Evaluator</strong>
-              <span className="text-xs text-[var(--color-text-tertiary)]">773-dimensional board vector mapped through trained PyTorch MLPs to centipawn score.</span>
+              <span className="text-xs text-[var(--color-text-tertiary)]">The configured neural checkpoint scores positions in centipawns.</span>
             </div>
           </div>
         </div>
@@ -72,13 +72,13 @@ export function AboutPage() {
               <strong className="text-[var(--color-text-primary)]">Move Ordering:</strong> Moves are sorted before recursion to test high-probability winning captures first (Most Valuable Victim – Least Valuable Aggressor heuristic), maximizing early cutoffs.
             </li>
             <li>
-              <strong className="text-[var(--color-text-primary)]">Quiescence Search:</strong> When search reaches depth 0, tactical volatility is resolved by examining captures exclusively until a quiet, non-tactical position is reached, eliminating the destructive "horizon effect".
+              <strong className="text-[var(--color-text-primary)]">Quiescence Search:</strong> At depth 0, search examines captures and promotions, as well as all legal evasions when the mover is in check.
             </li>
             <li>
               <strong className="text-[var(--color-text-primary)]">Transposition Tables:</strong> Previously computed subtrees are cached with depth and bound flags (Exact, Lowerbound, Upperbound) using canonical position keys, avoiding redundant evaluations in transposed lines.
             </li>
             <li>
-              <strong className="text-[var(--color-text-primary)]">Timed Iterative Deepening:</strong> Deepens search from depth 1 upwards under strict wall-clock deadlines, ensuring the best move from the last fully completed ply is returned even on search timeouts.
+              <strong className="text-[var(--color-text-primary)]">Timed Iterative Deepening:</strong> Search starts at depth 1 and returns the best move from its last completed depth. If the deadline arrives before depth 1 completes, search returns a legal fallback.
             </li>
           </ul>
 
@@ -132,21 +132,25 @@ export function AboutPage() {
         <div className="flex items-baseline gap-3 mb-4">
           <span className="font-mono text-sm text-[var(--color-accent)] font-semibold">03</span>
           <h2 className="text-2xl font-semibold text-[var(--color-text-primary)] tracking-tight">
-            PyTorch Neural Evaluation Model
+            Neural Evaluation Models
           </h2>
         </div>
         <div className="space-y-4 text-[var(--color-text-secondary)] leading-relaxed text-sm sm:text-base">
           <p>
-            Rather than relying solely on simplistic material piece counting (pawn=100, knight=320, rook=500), the project features <code className="text-xs font-mono text-[var(--color-accent-bright)]">ChessEvaluator</code>: a custom PyTorch deep learning architecture that assesses positional nuance, king safety, piece square mobility, and pawn structure.
+            NeuraChess reads the architecture from the selected checkpoint. Both models train on Stockfish position scores and run on the CPU.
           </p>
 
           <div className="p-4 bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] font-mono text-xs space-y-2">
-            <div className="text-[var(--color-accent-bright)]">// Neural Architecture (ChessEvaluator)</div>
-            <div>Input Dimension: <strong className="text-[var(--color-text-primary)]">773 features</strong> (64 squares × 12 piece types + castling/turn/en-passant context)</div>
-            <div>Hidden Layer 1: <strong className="text-[var(--color-text-primary)]">Linear(773 → 256)</strong> + LayerNorm + ReLU + Dropout(0.1)</div>
-            <div>Hidden Layer 2: <strong className="text-[var(--color-text-primary)]">Linear(256 → 128)</strong> + LayerNorm + ReLU</div>
-            <div>Output Layer: <strong className="text-[var(--color-text-primary)]">Linear(128 → 1)</strong> (Continuous centipawn score prediction)</div>
-            <div>Loss Objective: <strong className="text-[var(--color-text-primary)]">Smooth L1 / Huber Loss</strong> (Robust against outlier tactical spikes)</div>
+            <div className="text-[var(--color-accent-bright)]">Original MLP (model_v001.pt)</div>
+            <div><strong className="text-[var(--color-text-primary)]">773 input features</strong> (12 piece planes, side to move, and four castling rights)</div>
+            <div><strong className="text-[var(--color-text-primary)]">512 → 256 → 128 hidden units</strong> with LayerNorm and GELU, trained with 0.1 dropout</div>
+            <div><strong className="text-[var(--color-text-primary)]">One linear output</strong> scaled to White-relative centipawns</div>
+            <div><strong className="text-[var(--color-text-primary)]">Huber loss</strong> for training</div>
+          </div>
+          <div className="p-4 bg-[var(--color-surface-base)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] font-mono text-xs space-y-2">
+            <div className="text-[var(--color-accent-bright)]">NNUE (nnue_v001.pt)</div>
+            <div>Each king’s position selects a set of piece-square weights. The search updates those sums as pieces move.</div>
+            <div>Two 256-value perspectives feed a 32-unit layer that predicts a correction to the material score.</div>
           </div>
         </div>
       </section>

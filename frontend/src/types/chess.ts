@@ -1,6 +1,10 @@
+import type { SearchOptions, SearchResult } from './engine';
+
 export type PieceColor = 'w' | 'b';
-export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
 export type Square = string;
+export type PlayerColor = 'white' | 'black';
+export type BoardTheme = 'classic' | 'lichess' | 'midnight' | 'slate';
+export type PieceTheme = 'standard' | 'neo' | 'alpha';
 
 export interface MoveRecord {
   san: string;
@@ -8,47 +12,42 @@ export interface MoveRecord {
   fen: string;
   moveNumber: number;
   color: PieceColor;
-  captured?: string;
-  isCheck?: boolean;
-  timeMs?: number;
+  captured: string | null;
+  timeMs: number | null;
 }
 
 export interface GameOutcome {
-  result: 'white' | 'black' | 'draw';
+  result: PlayerColor | 'draw';
   reason:
     | 'checkmate'
     | 'stalemate'
     | 'resignation'
     | 'insufficient-material'
     | 'threefold-repetition'
+    | 'fivefold-repetition'
     | 'fifty-move'
-    | 'agreement';
-  winner: 'white' | 'black' | null;
+    | 'seventyfive-move';
+  winner: PlayerColor | null;
 }
 
 export interface CapturedPieces {
-  white: string[]; // pieces captured by white (black pieces taken)
-  black: string[]; // pieces captured by black (white pieces taken)
+  white: string[];
+  black: string[];
+}
+
+export interface GameOptions extends SearchOptions {
+  playerColor: PlayerColor;
 }
 
 export interface GameState {
+  id: string;
+  revision: number;
+  settings: GameOptions;
+  initialFen: string;
   fen: string;
-  pgn: string;
   turn: PieceColor;
   isCheck: boolean;
-  isCheckmate: boolean;
-  isStalemate: boolean;
-  isDraw: boolean;
-  isGameOver: boolean;
   outcome: GameOutcome | null;
   moveHistory: MoveRecord[];
-  currentMoveIndex: number;
-  lastMove: { from: Square; to: Square } | null;
-  capturedPieces: CapturedPieces;
-  kingSquare: Square | null;
+  lastSearch: SearchResult | null;
 }
-
-export type GameMode = 'play' | 'analysis';
-export type PlayerColor = 'white' | 'black';
-export type BoardTheme = 'classic' | 'lichess' | 'midnight' | 'slate';
-export type PieceTheme = 'standard' | 'neo' | 'alpha';

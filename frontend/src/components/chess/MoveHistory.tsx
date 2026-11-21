@@ -34,7 +34,7 @@ export function MoveHistory({
         });
       } else {
         const lastTurn = list[list.length - 1];
-        if (lastTurn && !lastTurn.black) {
+        if (lastTurn?.moveNumber === move.moveNumber && !lastTurn.black) {
           lastTurn.black = move;
           lastTurn.blackIdx = i;
         } else {
@@ -49,18 +49,23 @@ export function MoveHistory({
     return list;
   }, [moves]);
 
-  // Smooth scroll to active move
   useEffect(() => {
-    if (activeMoveRef.current && scrollContainerRef.current) {
-      activeMoveRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'nearest',
-      });
+    const ledger = scrollContainerRef.current;
+    const activeMove = activeMoveRef.current;
+    if (!ledger || !activeMove) return;
+
+    const { top, bottom } = activeMove.getBoundingClientRect();
+    const ledgerTop = ledger.getBoundingClientRect().top + ledger.clientTop;
+    const ledgerBottom = ledgerTop + ledger.clientHeight;
+    if (top < ledgerTop) {
+      ledger.scrollTop += top - ledgerTop;
+    } else if (bottom > ledgerBottom) {
+      ledger.scrollTop += bottom - ledgerBottom;
     }
   }, [currentIndex]);
 
   return (
-    <div className="flex flex-col flex-1 min-h-[160px] max-h-[320px] bg-[var(--color-surface-panel)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] overflow-hidden">
+    <div className="flex h-60 shrink-0 flex-col bg-[var(--color-surface-panel)] border border-[var(--color-border-subtle)] rounded-[var(--radius-sm)] overflow-hidden">
       {/* Move list header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border-subtle)] bg-[var(--color-surface-raised)]">
         <span className="text-xs font-mono font-semibold tracking-wider uppercase text-[var(--color-text-secondary)]">
